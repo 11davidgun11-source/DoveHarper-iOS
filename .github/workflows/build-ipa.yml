@@ -22,28 +22,51 @@ jobs:
         run: |
           find . -name "*.swift" -exec sed -i '' 's/\r$//' {} \; 2>/dev/null || true
           find . -name "*.plist" -exec sed -i '' 's/\r$//' {} \; 2>/dev/null || true
-          find . -name "*.json" -exec sed -i '' 's/\r$//' {} \; 2>/dev/null || true
 
-      - name: Build for iOS
+      - name: Create export options
         run: |
-          xcodebuild build \
+          cat > /tmp/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>compileBitcode</key>
+              <false/>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive for iOS
+        run: |
+          xcodebuild archive \
             -project DoveHarper.xcodeproj \
             -scheme DoveHarper \
             -destination 'generic/platform=iOS' \
-            -configuration Release \
-            -derivedDataPath build \
+            -archivePath build/DoveHarper.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -100
+            ENABLE_BITCODE=NO \
+            2>&1 | tail -50
 
       - name: Create IPA
         run: |
-          APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
+          # The archive creates a .xcarchive with the app
+          ARCHIVE_PATH="build/DoveHarper.xcarchive"
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/DoveHarper.app"
           
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: Could not find built app"
-            find build -type f -name "*.app" 2>/dev/null
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App not found in archive, searching..."
+            find build -name "DoveHarper.app" -type d 2>/dev/null
+            APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
+          fi
+          
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: Could not find DoveHarper.app"
             exit 1
           fi
           
