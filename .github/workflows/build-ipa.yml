@@ -20,13 +20,13 @@ jobs:
 
       - name: Create Xcode Project
         run: |
-          cd DoveHarper
+          # Fix CRLF issues
+          find . -name "*.swift" -o -name "*.plist" -o -name "*.json" -o -name "*.yml" | head -20 | while read f; do
+            sed -i '' 's/\r$//' "$f" 2>/dev/null || true
+          done
           
-          # Create project structure
-          mkdir -p DoveHarper.xcodeproj
-          
-          # Generate project.pbxproj
-          cat > DoveHarper.xcodeproj/project.pbxproj << 'PBXPROJ'
+          # Create project.pbxproj
+          cat > DoveHarper.xcodeproj/project.pbxproj << 'EOF'
           // !$*UTF8*$!
           {
           	archiveVersion = 1;
@@ -277,9 +277,9 @@ jobs:
           			MTL_ENABLE_DEBUG_INFO = NO;
           			SWIFT_COMPILATION_MODE = wholemodule;
           			TARGETED_DEVICE_FAMILY = "1,2";
-          				ENABLE_BITCODE = NO;
-          				SUPPORTS_MACCATALYST = NO;
-          				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+          			ENABLE_BITCODE = NO;
+          			SUPPORTS_MACCATALYST = NO;
+          			SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
           		};
           		name = Release;
           	};
@@ -287,6 +287,7 @@ jobs:
           		isa = XCBuildConfiguration;
           		buildSettings = {
           			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+          			CODE_SIGN_IDENTITY = "";
           			CODE_SIGN_STYLE = Automatic;
           			CURRENT_PROJECT_VERSION = 1;
           			GENERATE_INFOPLIST_FILE = NO;
@@ -315,6 +316,7 @@ jobs:
           		isa = XCBuildConfiguration;
           		buildSettings = {
           			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+          			CODE_SIGN_IDENTITY = "";
           			CODE_SIGN_STYLE = Automatic;
           			CURRENT_PROJECT_VERSION = 1;
           			GENERATE_INFOPLIST_FILE = NO;
@@ -365,45 +367,62 @@ jobs:
           	};
           	rootObject = AG000001 /* Project object */;
           }
-          PBXPROJ
+          EOF
 
-      - name: Build IPA
+      - name: Build for iOS Simulator
         run: |
-          cd DoveHarper
-          
-          # Build for iOS Simulator first (to verify compilation)
           xcodebuild build \
             -project DoveHarper.xcodeproj \
             -scheme DoveHarper \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Release \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            | tail -50
-          
-          # Build for device (without signing)
-          xcodebuild build \
-            -project DoveHarper.xcodeproj \
-            -scheme DoveHarper \
+            -destination 'generic/platform=iOS Simulator,name=iPhone 15' \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            | tail -50
+            SUPPORTS_MACCATALYST=NO \
+            SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD=NO \
+            2>&1 | tail -100
 
       - name: Create IPA
         run: |
-          cd DoveHarper
+          # Find the built app
+          APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "App not found, listing build directory:"
+            find build -type f -name "*.app" 2>/dev/null
+            echo "Trying alternative build..."
+            
+            # Try building for generic iOS
+            xcodebuild build \
+              -project DoveHarper.xcodeproj \
+              -scheme DoveHarper \
+              -configuration Release \
+              -derivedDataPath build2 \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              2>&1 | tail -50
+            
+            APP_PATH=$(find build2 -name "DoveHarper.app" -type d | head -1)
+          fi
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Could not find built app"
+            exit 1
+          fi
+          
+          echo "Found app at: $APP_PATH"
           
           # Create IPA structure
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/DoveHarper.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r DoveHarper.ipa Payload
           
           # Get file size
           ls -lh DoveHarper.ipa
+          echo "IPA_URL=https://github.com/${{ github.repository }}/releases/download/v1.0.${{ github.run_number }}/DoveHarper.ipa"
 
       - name: Upload IPA to Release
         if: github.ref == 'refs/heads/main'
@@ -411,7 +430,23 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: DoveHarper v1.0.${{ github.run_number }}
-          files: DoveHarper/DoveHarper.ipa
+          files: DoveHarper.ipa
           generate_release_notes: true
+          body: |
+            ## DoveHarper iOS App v1.0.${{ github.run_number }}
+            
+            ### Installation
+            1. Download `DoveHarper.ipa` below
+            2. Transfer to your iPhone (AirDrop, iCloud, etc.)
+            3. Open with LiveContainer
+            4. Trust the developer profile in Settings > General > VPN & Device Management
+            
+            ### Features
+            - Book management (create, edit, delete)
+            - Publishing to GitHub (triggers EPUB/PDF generation)
+            - Queue system with "Fire Now"
+            - Live links to view published books
+            - Text autocorrect
+            - Offline drafts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
