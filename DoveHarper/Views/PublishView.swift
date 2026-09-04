@@ -91,7 +91,7 @@ struct PublishView: View {
                 }
             }
         }
-        .interactiveDismissDisabled(status is PublishingState)
+        .interactiveDismissDisabled(status.isPublishing)
     }
 
     private var statusIcon: String {

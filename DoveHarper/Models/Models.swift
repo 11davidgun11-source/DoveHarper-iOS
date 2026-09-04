@@ -76,6 +76,7 @@ final class BookEntity {
             isLatestRelease: isLatestRelease,
             tropes: tropes,
             themes: themes,
+            forFansOf: forFansOf,
             tickerQuotes: tickerQuotes,
             formats: ["EPUB", "PDF", "DOCX"],
             isFree: isFree,
@@ -164,6 +165,7 @@ struct BookJSON: Codable {
     let isLatestRelease: Bool
     let tropes: [String]
     let themes: [String]
+    let forFansOf: [String]
     let tickerQuotes: [String]
     let formats: [String]
     let isFree: Bool
@@ -184,7 +186,7 @@ struct BookJSON: Codable {
     let sourceMarkdown: String
 
     enum CodingKeys: String, CodingKey {
-        case slug, title, author, series, tropes, themes, formats, status
+        case slug, title, author, series, tropes, themes, forFansOf, formats, status
         case catalogStatus = "catalog_status"
         case seriesType = "series_type"
         case seriesOrder = "series_order"

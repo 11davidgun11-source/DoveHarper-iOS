@@ -30,7 +30,7 @@ struct BookEditorView: View {
         Form {
             Section("Basic Info") {
                 TextField("Title", text: $book.title)
-                    .onChange(of: book.title) { _, newValue in
+                    .onChange(of: book.title) { oldValue, newValue in
                         if book.slug.isEmpty || book.slug == slugify(oldValue) {
                             book.slug = slugify(newValue)
                         }
