@@ -30,6 +30,7 @@ jobs:
 
       - name: Build for iOS Device
         run: |
+          set -e
           xcodebuild build \
             -project DoveHarper.xcodeproj \
             -scheme DoveHarper \
@@ -44,6 +45,7 @@ jobs:
             2>&1 | tail -80
 
       - name: Package IPA
+        if: success()
         run: |
           APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
           

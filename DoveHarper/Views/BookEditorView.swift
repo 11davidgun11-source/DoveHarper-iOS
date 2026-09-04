@@ -183,7 +183,7 @@ struct BookEditorView: View {
         }
         .fileImporter(
             isPresented: $showingManuscriptPicker,
-            allowedContentTypes: [.plainText, .markdown, .pdf],
+            allowedContentTypes: [.plainText, .pdf],
             allowsMultipleSelection: false
         ) { result in
             handleManuscriptImport(result)
