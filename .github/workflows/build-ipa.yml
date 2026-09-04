@@ -23,43 +23,41 @@ jobs:
           find . -name "*.swift" -exec sed -i '' 's/\r$//' {} \; 2>/dev/null || true
           find . -name "*.plist" -exec sed -i '' 's/\r$//' {} \; 2>/dev/null || true
 
-      - name: List available destinations
+      - name: Show project info
         run: |
-          xcodebuild -project DoveHarper.xcodeproj -scheme DoveHarper -showdestinations 2>&1 | head -30 || true
-          xcodebuild -project DoveHarper.xcodeproj -list 2>&1 || true
+          xcodebuild -project DoveHarper.xcodeproj -list
+          xcodebuild -project DoveHarper.xcodeproj -scheme DoveHarper -showdestinations 2>&1 | head -20 || true
 
-      - name: Build for iOS Simulator
+      - name: Build for iOS Device
         run: |
           xcodebuild build \
             -project DoveHarper.xcodeproj \
             -scheme DoveHarper \
-            -destination 'generic/platform=iOS Simulator' \
             -configuration Release \
             -derivedDataPath build \
+            -sdk iphoneos \
+            ARCHS=arm64 \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
             2>&1 | tail -80
 
       - name: Package IPA
         run: |
-          # Find the built app (simulator or device)
           APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
           
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: Could not find DoveHarper.app"
-            find build -type f -name "*.app" 2>/dev/null || echo "No .app files found"
+            find build -type d -name "*.app" 2>/dev/null || echo "No .app directories"
             exit 1
           fi
           
           echo "Found app at: $APP_PATH"
-          
-          # Create IPA structure
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r DoveHarper.ipa Payload
           ls -lh DoveHarper.ipa
-          echo "IPA built successfully"
 
       - name: Upload IPA to Release
         if: github.ref == 'refs/heads/main'
@@ -72,18 +70,9 @@ jobs:
           body: |
             ## DoveHarper iOS App v1.0.${{ github.run_number }}
             
-            **Note:** This is a simulator build. For LiveContainer, you need to rebuild on your Mac:
-            ```
-            xcodebuild build -project DoveHarper.xcodeproj -scheme DoveHarper -destination 'generic/platform=iOS' -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-            ```
-            Then create the IPA from the built .app.
-            
-            ### Features
-            - Book management (create, edit, delete)
-            - Publishing to GitHub (triggers EPUB/PDF generation)
-            - Queue system with "Fire Now"
-            - Live links to view published books
-            - Text autocorrect
-            - Offline drafts
+            ### Installation
+            1. Download `DoveHarper.ipa` below
+            2. Transfer to your iPhone (AirDrop, iCloud, etc.)
+            3. Open with LiveContainer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
