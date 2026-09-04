@@ -1,0 +1,122 @@
+name: Generate Book Samples
+
+on:
+  push:
+    paths:
+      - 'dove-harper-site/manuscripts/*.md'
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: 'Book slug'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended
+
+      - name: Determine slug
+        id: slug
+        run: |
+          if [ -n "${{ github.event.inputs.slug }}" ]; then
+            echo "slug=${{ github.event.inputs.slug }}" >> $GITHUB_OUTPUT
+          else
+            FILENAME=$(basename "${{ github.event.head_ref || '' }}" .md)
+            if [ "$FILENAME" = "manuscripts" ] || [ -z "$FILENAME" ]; then
+              CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'dove-harper-site/manuscripts/*.md' | head -1)
+              FILENAME=$(basename "$CHANGED" .md)
+            fi
+            echo "slug=$FILENAME" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if samples directory exists
+        id: check
+        run: |
+          SLUG="${{ steps.slug.outputs.slug }}"
+          if [ -f "dove-harper-site/content/books/${SLUG}.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate EPUB
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          SLUG="${{ steps.slug.outputs.slug }}"
+          mkdir -p "dove-harper-site/public/samples/${SLUG}"
+          
+          # Read book metadata
+          TITLE=$(python3 -c "import json; d=json.load(open('dove-harper-site/content/books/${SLUG}.json')); print(d.get('title', '${SLUG}'))")
+          AUTHOR=$(python3 -c "import json; d=json.load(open('dove-harper-site/content/books/${SLUG}.json')); print(d.get('author', 'Dove Harper'))")
+          COVER="dove-harper-site/public/assets/img/covers/${SLUG}-cover.jpg"
+          
+          # Create EPUB
+          if [ -f "$COVER" ]; then
+            pandoc "dove-harper-site/manuscripts/${SLUG}.md" \
+              -o "dove-harper-site/public/samples/${SLUG}/dove-harper-${SLUG}-epub-sample.epub" \
+              --standalone \
+              --metadata title="$TITLE" \
+              --metadata author="$AUTHOR" \
+              --metadata lang=en-US \
+              --metadata publisher=DoveHarperAuthor.com \
+              --epub-cover-image="$COVER"
+          else
+            pandoc "dove-harper-site/manuscripts/${SLUG}.md" \
+              -o "dove-harper-site/public/samples/${SLUG}/dove-harper-${SLUG}-epub-sample.epub" \
+              --standalone \
+              --metadata title="$TITLE" \
+              --metadata author="$AUTHOR" \
+              --metadata lang=en-US \
+              --metadata publisher=DoveHarperAuthor.com
+          fi
+
+      - name: Generate PDF
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          SLUG="${{ steps.slug.outputs.slug }}"
+          mkdir -p "dove-harper-site/public/samples/${SLUG}"
+          
+          # Read book metadata
+          TITLE=$(python3 -c "import json; d=json.load(open('dove-harper-site/content/books/${SLUG}.json')); print(d.get('title', '${SLUG}'))")
+          AUTHOR=$(python3 -c "import json; d=json.load(open('dove-harper-site/content/books/${SLUG}.json')); print(d.get('author', 'Dove Harper'))")
+          COVER="dove-harper-site/public/assets/img/covers/${SLUG}-cover.jpg"
+          
+          # Create PDF input with cover
+          if [ -f "$COVER" ]; then
+            echo "![Cover](${COVER}){ width=100% }" > /tmp/pdf-input.md
+            echo "" >> /tmp/pdf-input.md
+            echo "\\newpage" >> /tmp/pdf-input.md
+            echo "" >> /tmp/pdf-input.md
+            cat "dove-harper-site/manuscripts/${SLUG}.md" >> /tmp/pdf-input.md
+          else
+            cp "dove-harper-site/manuscripts/${SLUG}.md" /tmp/pdf-input.md
+          fi
+          
+          # Create PDF
+          pandoc /tmp/pdf-input.md \
+            -o "dove-harper-site/public/samples/${SLUG}/dove-harper-${SLUG}-pdf-sample.pdf" \
+            --standalone \
+            --pdf-engine=xelatex \
+            --metadata title="$TITLE" \
+            --metadata author="$AUTHOR" \
+            --metadata lang=en-US
+
+      - name: Commit samples
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          SLUG="${{ steps.slug.outputs.slug }}"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add "dove-harper-site/public/samples/${SLUG}/"
+          git diff --staged --quiet || git commit -m "Update samples for ${SLUG}"
+          git push
