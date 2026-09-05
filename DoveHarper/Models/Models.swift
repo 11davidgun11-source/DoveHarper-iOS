@@ -185,6 +185,43 @@ struct BookJSON: Codable {
     let status: String
     let sourceMarkdown: String
 
+    init(slug: String, title: String, author: String, catalogStatus: String, seriesType: String, series: String, seriesOrder: String?, isNovella: Bool, isBundle: Bool, bundleMembers: [String], releaseDate: String, wordCount: Int, isLatestRelease: Bool, tropes: [String], themes: [String], forFansOf: [String], tickerQuotes: [String], formats: [String], isFree: Bool, primaryCheckoutURL: String, backupCheckoutURL: String, checkoutProviderLabel: String, backupCheckoutProviderLabel: String, priceLabel: String, formatsIncluded: String, sampleEPUBURL: String, samplePDFURL: String, sampleDOCXURL: String, coverImage: String, shortDescription: String, description: String, contentNotes: String, status: String, sourceMarkdown: String) {
+        self.slug = slug
+        self.title = title
+        self.author = author
+        self.catalogStatus = catalogStatus
+        self.seriesType = seriesType
+        self.series = series
+        self.seriesOrder = seriesOrder
+        self.isNovella = isNovella
+        self.isBundle = isBundle
+        self.bundleMembers = bundleMembers
+        self.releaseDate = releaseDate
+        self.wordCount = wordCount
+        self.isLatestRelease = isLatestRelease
+        self.tropes = tropes
+        self.themes = themes
+        self.forFansOf = forFansOf
+        self.tickerQuotes = tickerQuotes
+        self.formats = formats
+        self.isFree = isFree
+        self.primaryCheckoutURL = primaryCheckoutURL
+        self.backupCheckoutURL = backupCheckoutURL
+        self.checkoutProviderLabel = checkoutProviderLabel
+        self.backupCheckoutProviderLabel = backupCheckoutProviderLabel
+        self.priceLabel = priceLabel
+        self.formatsIncluded = formatsIncluded
+        self.sampleEPUBURL = sampleEPUBURL
+        self.samplePDFURL = samplePDFURL
+        self.sampleDOCXURL = sampleDOCXURL
+        self.coverImage = coverImage
+        self.shortDescription = shortDescription
+        self.description = description
+        self.contentNotes = contentNotes
+        self.status = status
+        self.sourceMarkdown = sourceMarkdown
+    }
+
     enum CodingKeys: String, CodingKey {
         case slug, title, author, series, tropes, themes, formats, status
         case catalogStatus = "catalog_status"
