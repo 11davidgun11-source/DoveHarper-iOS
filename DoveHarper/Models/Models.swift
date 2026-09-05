@@ -129,16 +129,18 @@ final class AppSettings {
     var githubRepo: String
     var shopifyShopURL: String
     var shopifyAccessToken: String
+    var tryPostAPIKey: String
     var defaultAuthor: String
     var timezone: String
     var autocorrectRules: [String: String]
 
     init() {
-        self.githubPAT = ""
-        self.githubOwner = "doveharperauthor"
-        self.githubRepo = "DoveHarper-site"
-        self.shopifyShopURL = "doveharpershop.myshopify.com"
-        self.shopifyAccessToken = ""
+        self.githubPAT = Secrets.githubPAT
+        self.githubOwner = Secrets.githubOwner
+        self.githubRepo = Secrets.githubRepo
+        self.shopifyShopURL = Secrets.shopifyShopURL
+        self.shopifyAccessToken = Secrets.shopifyAccessToken
+        self.tryPostAPIKey = Secrets.tryPostAPIKey
         self.defaultAuthor = "Dove Harper"
         self.timezone = "Europe/Lisbon"
         self.autocorrectRules = [

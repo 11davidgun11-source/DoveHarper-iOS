@@ -24,6 +24,8 @@
 		AA000015 /* TagInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
 		AA000016 /* PublishGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000018; };
 		AA000017 /* DismissKeyboardOnTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000019; };
+		AA000018 /* ConnectionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000020; };
+		AA000019 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000021; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +48,8 @@
 		AB000017 /* TagInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInputView.swift; sourceTree = "<group>"; };
 		AB000018 /* PublishGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishGateView.swift; sourceTree = "<group>"; };
 		AB000019 /* DismissKeyboardOnTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissKeyboardOnTap.swift; sourceTree = "<group>"; };
+		AB000020 /* ConnectionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionChecker.swift; sourceTree = "<group>"; };
+		AB000021 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				AB000001 /* DoveHarperApp.swift */,
+				AB000021 /* Secrets.swift */,
 				AD000004 /* Models */,
 				AD000005 /* Services */,
 				AD000006 /* Views */,
@@ -104,6 +109,7 @@
 				AB000004 /* ShopifyService.swift */,
 				AB000005 /* TextCorrector.swift */,
 				AB000006 /* ConversionService.swift */,
+				AB000020 /* ConnectionChecker.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -217,6 +223,8 @@
 				AA000015 /* TagInputView.swift in Sources */,
 				AA000016 /* PublishGateView.swift in Sources */,
 				AA000017 /* DismissKeyboardOnTap.swift in Sources */,
+				AA000018 /* ConnectionChecker.swift in Sources */,
+				AA000019 /* Secrets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
