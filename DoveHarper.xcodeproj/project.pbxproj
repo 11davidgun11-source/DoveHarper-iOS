@@ -20,6 +20,9 @@
 		AA000011 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000011; };
 		AA000012 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000012; };
 		AA000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB000013; };
+		AA000014 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000016; };
+		AA000015 /* TagInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
+		AA000016 /* PublishGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000018; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +41,9 @@
 		AB000013 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AB000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AB000015 /* DoveHarper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DoveHarper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB000016 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		AB000017 /* TagInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInputView.swift; sourceTree = "<group>"; };
+		AB000018 /* PublishGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishGateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +72,7 @@
 				AD000004 /* Models */,
 				AD000005 /* Services */,
 				AD000006 /* Views */,
+				AD000007 /* Components */,
 				AB000013 /* Assets.xcassets */,
 				AB000014 /* Info.plist */,
 			);
@@ -110,6 +117,16 @@
 				AB000012 /* BookDetailView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		AD000007 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				AB000016 /* FlowLayout.swift */,
+				AB000017 /* TagInputView.swift */,
+				AB000018 /* PublishGateView.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -193,6 +210,9 @@
 				AA000010 /* QueueView.swift in Sources */,
 				AA000011 /* SettingsView.swift in Sources */,
 				AA000012 /* BookDetailView.swift in Sources */,
+				AA000014 /* FlowLayout.swift in Sources */,
+				AA000015 /* TagInputView.swift in Sources */,
+				AA000016 /* PublishGateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

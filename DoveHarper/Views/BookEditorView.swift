@@ -7,21 +7,14 @@ struct BookEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var book: BookEntity
 
-    @State private var showingImagePicker = false
     @State private var selectedImage: PhotosPickerItem?
     @State private var coverImage: UIImage?
     @State private var manuscriptText = ""
     @State private var showingManuscriptPicker = false
-    @State private var isPublishing = false
-    @State private var publishStatus: PublishStatus = .idle
     @State private var showingPublishView = false
+    @State private var showingPublishGate = false
     @State private var errorMessage: String?
     @State private var showingError = false
-    @State private var tropeText = ""
-    @State private var themeText = ""
-    @State private var contentNotesText = ""
-    @State private var forFansOfText = ""
-    @State private var tickerQuotesText = ""
 
     @Query private var allSettings: [AppSettings]
     private var settings: AppSettings? { allSettings.first }
@@ -49,42 +42,37 @@ struct BookEditorView: View {
             }
 
             Section("Classification") {
-                TextField("Tropes (comma separated)", text: $tropeText)
-                    .onChange(of: tropeText) { _, newValue in
-                        book.tropes = newValue.split(separator: ",").map {
-                            String($0).trimmingCharacters(in: .whitespaces)
-                        }.filter { !$0.isEmpty }
-                    }
-                TextField("Themes (comma separated)", text: $themeText)
-                    .onChange(of: themeText) { _, newValue in
-                        book.themes = newValue.split(separator: ",").map {
-                            String($0).trimmingCharacters(in: .whitespaces)
-                        }.filter { !$0.isEmpty }
-                    }
-                TextField("Content Notes (comma separated)", text: $contentNotesText)
-                    .onChange(of: contentNotesText) { _, newValue in
-                        book.contentNotes = newValue.split(separator: ",").map {
-                            String($0).trimmingCharacters(in: .whitespaces)
-                        }.filter { !$0.isEmpty }
-                    }
-                TextField("For Fans Of (comma separated)", text: $forFansOfText)
-                    .onChange(of: forFansOfText) { _, newValue in
-                        book.forFansOf = newValue.split(separator: ",").map {
-                            String($0).trimmingCharacters(in: .whitespaces)
-                        }.filter { !$0.isEmpty }
-                    }
-                TextField("Ticker Quotes (one per line)", text: $tickerQuotesText)
-                    .onChange(of: tickerQuotesText) { _, newValue in
-                        book.tickerQuotes = newValue.components(separatedBy: "\n").filter {
-                            !$0.trimmingCharacters(in: .whitespaces).isEmpty
-                        }
-                    }
+                TagInputView(
+                    tags: $book.tropes,
+                    placeholder: "Add trope...",
+                    autocorrectRules: settings?.autocorrectRules ?? [:]
+                )
+                TagInputView(
+                    tags: $book.themes,
+                    placeholder: "Add theme...",
+                    autocorrectRules: settings?.autocorrectRules ?? [:]
+                )
+                TagInputView(
+                    tags: $book.contentNotes,
+                    placeholder: "Add content note...",
+                    autocorrectRules: settings?.autocorrectRules ?? [:]
+                )
+                TagInputView(
+                    tags: $book.forFansOf,
+                    placeholder: "Add author...",
+                    autocorrectRules: settings?.autocorrectRules ?? [:]
+                )
+                TagInputView(
+                    tags: $book.tickerQuotes,
+                    placeholder: "Add ticker quote...",
+                    autocorrectRules: settings?.autocorrectRules ?? [:]
+                )
             }
 
             Section("Pricing") {
                 Toggle("Free Book", isOn: $book.isFree)
+                PriceInputView(priceLabel: $book.priceLabel, isFree: $book.isFree)
                 if !book.isFree {
-                    TextField("Price Label (e.g. $4.99)", text: $book.priceLabel)
                     TextField("Shopify Checkout URL", text: $book.primaryCheckoutURL)
                         .keyboardType(.URL)
                         .autocapitalization(.none)
@@ -164,7 +152,7 @@ struct BookEditorView: View {
                 }
 
                 Button {
-                    showingPublishView = true
+                    showingPublishGate = true
                 } label: {
                     Label("Publish", systemImage: "arrow.up.circle.fill")
                 }
@@ -187,6 +175,20 @@ struct BookEditorView: View {
             allowsMultipleSelection: false
         ) { result in
             handleManuscriptImport(result)
+        }
+        .sheet(isPresented: $showingPublishGate) {
+            PublishGateView(
+                book: book,
+                coverImage: coverImage,
+                manuscriptText: manuscriptText,
+                onPublish: {
+                    showingPublishGate = false
+                    showingPublishView = true
+                },
+                onCancel: {
+                    showingPublishGate = false
+                }
+            )
         }
         .fullScreenCover(isPresented: $showingPublishView) {
             PublishView(book: book, coverImage: coverImage, manuscriptText: manuscriptText)
@@ -216,12 +218,6 @@ struct BookEditorView: View {
     }
 
     private func loadExistingData() {
-        tropeText = book.tropes.joined(separator: ", ")
-        themeText = book.themes.joined(separator: ", ")
-        contentNotesText = book.contentNotes.joined(separator: ", ")
-        forFansOfText = book.forFansOf.joined(separator: ", ")
-        tickerQuotesText = book.tickerQuotes.joined(separator: "\n")
-
         if let path = book.manuscriptPath,
            let data = FileManager.default.contents(atPath: path),
            let text = String(data: data, encoding: .utf8) {

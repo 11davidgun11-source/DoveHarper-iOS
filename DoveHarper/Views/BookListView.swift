@@ -9,6 +9,8 @@ struct BookListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var lastSynced: Date?
+    @State private var patMissing = false
 
     private var allBooks: [BookEntity] {
         drafts + publishedBooks
@@ -34,11 +36,29 @@ struct BookListView: View {
                             .foregroundStyle(.secondary)
                         Text("No books yet")
                             .font(.title2)
-                        Text("Pull from site or create a new book")
-                            .foregroundStyle(.secondary)
+                        if patMissing {
+                            Text("Configure your GitHub PAT in Settings to load books")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        } else {
+                            Text("Pull from site or create a new book")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } else {
                     List {
+                        if let lastSynced {
+                            Section {
+                                HStack {
+                                    Text("Synced \(lastSynced.formatted(.relative(presentation: .named)))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
                         if !drafts.isEmpty {
                             Section("Drafts") {
                                 ForEach(drafts) { book in
@@ -58,6 +78,9 @@ struct BookListView: View {
                                 }
                             }
                         }
+                    }
+                    .refreshable {
+                        await refreshBooks()
                     }
                 }
             }
@@ -101,9 +124,16 @@ struct BookListView: View {
     }
 
     private func refreshBooks() async {
-        guard let settings = try? modelContext.fetch(FetchDescriptor<AppSettings>()).first else { return }
-        guard !settings.githubPAT.isEmpty else { return }
+        let descriptor = FetchDescriptor<AppSettings>()
+        guard let settings = try? modelContext.fetch(descriptor).first else { return }
 
+        if settings.githubPAT.isEmpty {
+            patMissing = true
+            errorMessage = "GitHub PAT not configured. Go to Settings tab."
+            return
+        }
+
+        patMissing = false
         isLoading = true
         defer { isLoading = false }
 
@@ -126,6 +156,7 @@ struct BookListView: View {
             }
 
             try modelContext.save()
+            lastSynced = Date()
         } catch {
             errorMessage = "Failed to load books: \(error.localizedDescription)"
         }

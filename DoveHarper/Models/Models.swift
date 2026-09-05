@@ -186,7 +186,7 @@ struct BookJSON: Codable {
     let sourceMarkdown: String
 
     enum CodingKeys: String, CodingKey {
-        case slug, title, author, series, tropes, themes, forFansOf, formats, status
+        case slug, title, author, series, tropes, themes, formats, status
         case catalogStatus = "catalog_status"
         case seriesType = "series_type"
         case seriesOrder = "series_order"
@@ -197,6 +197,7 @@ struct BookJSON: Codable {
         case wordCount = "word_count"
         case isLatestRelease = "is_latest_release"
         case tickerQuotes = "ticker_quotes"
+        case forFansOf = "for_fans_of"
         case isFree = "is_free"
         case primaryCheckoutURL = "primary_checkout_url"
         case backupCheckoutURL = "backup_checkout_url"
@@ -212,6 +213,82 @@ struct BookJSON: Codable {
         case description
         case contentNotes = "content_notes"
         case sourceMarkdown = "source_markdown"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slug = (try? c.decode(String.self, forKey: .slug)) ?? ""
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        author = (try? c.decode(String.self, forKey: .author)) ?? "Dove Harper"
+        catalogStatus = (try? c.decode(String.self, forKey: .catalogStatus)) ?? "published"
+        seriesType = (try? c.decode(String.self, forKey: .seriesType)) ?? "standalone"
+        series = (try? c.decode(String.self, forKey: .series)) ?? "Standalone"
+        seriesOrder = try? c.decode(String?.self, forKey: .seriesOrder)
+        isNovella = (try? c.decode(Bool.self, forKey: .isNovella)) ?? false
+        isBundle = (try? c.decode(Bool.self, forKey: .isBundle)) ?? false
+        bundleMembers = (try? c.decode([String].self, forKey: .bundleMembers)) ?? []
+        releaseDate = (try? c.decode(String.self, forKey: .releaseDate)) ?? ""
+        wordCount = (try? c.decode(Int.self, forKey: .wordCount)) ?? 0
+        isLatestRelease = (try? c.decode(Bool.self, forKey: .isLatestRelease)) ?? true
+        tropes = (try? c.decode([String].self, forKey: .tropes)) ?? []
+        themes = (try? c.decode([String].self, forKey: .themes)) ?? []
+        forFansOf = (try? c.decode([String].self, forKey: .forFansOf)) ?? []
+        tickerQuotes = (try? c.decode([String].self, forKey: .tickerQuotes)) ?? []
+        formats = (try? c.decode([String].self, forKey: .formats)) ?? ["EPUB", "PDF"]
+        isFree = (try? c.decode(Bool.self, forKey: .isFree)) ?? false
+        primaryCheckoutURL = (try? c.decode(String.self, forKey: .primaryCheckoutURL)) ?? ""
+        backupCheckoutURL = (try? c.decode(String.self, forKey: .backupCheckoutURL)) ?? ""
+        checkoutProviderLabel = (try? c.decode(String.self, forKey: .checkoutProviderLabel)) ?? "Shopify"
+        backupCheckoutProviderLabel = (try? c.decode(String.self, forKey: .backupCheckoutProviderLabel)) ?? "Backup"
+        priceLabel = (try? c.decode(String.self, forKey: .priceLabel)) ?? ""
+        formatsIncluded = (try? c.decode(String.self, forKey: .formatsIncluded)) ?? "EPUB + PDF"
+        sampleEPUBURL = (try? c.decode(String.self, forKey: .sampleEPUBURL)) ?? ""
+        samplePDFURL = (try? c.decode(String.self, forKey: .samplePDFURL)) ?? ""
+        sampleDOCXURL = (try? c.decode(String.self, forKey: .sampleDOCXURL)) ?? ""
+        coverImage = (try? c.decode(String.self, forKey: .coverImage)) ?? ""
+        shortDescription = (try? c.decode(String.self, forKey: .shortDescription)) ?? ""
+        description = (try? c.decode(String.self, forKey: .description)) ?? ""
+        contentNotes = (try? c.decode(String.self, forKey: .contentNotes)) ?? ""
+        status = (try? c.decode(String.self, forKey: .status)) ?? "draft"
+        sourceMarkdown = (try? c.decode(String.self, forKey: .sourceMarkdown)) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(slug, forKey: .slug)
+        try c.encode(title, forKey: .title)
+        try c.encode(author, forKey: .author)
+        try c.encode(catalogStatus, forKey: .catalogStatus)
+        try c.encode(seriesType, forKey: .seriesType)
+        try c.encode(series, forKey: .series)
+        try c.encodeIfPresent(seriesOrder, forKey: .seriesOrder)
+        try c.encode(isNovella, forKey: .isNovella)
+        try c.encode(isBundle, forKey: .isBundle)
+        try c.encode(bundleMembers, forKey: .bundleMembers)
+        try c.encode(releaseDate, forKey: .releaseDate)
+        try c.encode(wordCount, forKey: .wordCount)
+        try c.encode(isLatestRelease, forKey: .isLatestRelease)
+        try c.encode(tropes, forKey: .tropes)
+        try c.encode(themes, forKey: .themes)
+        try c.encode(forFansOf, forKey: .forFansOf)
+        try c.encode(tickerQuotes, forKey: .tickerQuotes)
+        try c.encode(formats, forKey: .formats)
+        try c.encode(isFree, forKey: .isFree)
+        try c.encode(primaryCheckoutURL, forKey: .primaryCheckoutURL)
+        try c.encode(backupCheckoutURL, forKey: .backupCheckoutURL)
+        try c.encode(checkoutProviderLabel, forKey: .checkoutProviderLabel)
+        try c.encode(backupCheckoutProviderLabel, forKey: .backupCheckoutProviderLabel)
+        try c.encode(priceLabel, forKey: .priceLabel)
+        try c.encode(formatsIncluded, forKey: .formatsIncluded)
+        try c.encode(sampleEPUBURL, forKey: .sampleEPUBURL)
+        try c.encode(samplePDFURL, forKey: .samplePDFURL)
+        try c.encode(sampleDOCXURL, forKey: .sampleDOCXURL)
+        try c.encode(coverImage, forKey: .coverImage)
+        try c.encode(shortDescription, forKey: .shortDescription)
+        try c.encode(description, forKey: .description)
+        try c.encode(contentNotes, forKey: .contentNotes)
+        try c.encode(status, forKey: .status)
+        try c.encode(sourceMarkdown, forKey: .sourceMarkdown)
     }
 
     func toJSONString() -> String? {
