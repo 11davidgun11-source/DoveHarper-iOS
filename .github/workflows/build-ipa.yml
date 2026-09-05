@@ -26,7 +26,6 @@ jobs:
       - name: Show project info
         run: |
           xcodebuild -project DoveHarper.xcodeproj -list
-          xcodebuild -project DoveHarper.xcodeproj -scheme DoveHarper -showdestinations 2>&1 | head -20 || true
 
       - name: Build for iOS Device
         run: |
@@ -41,25 +40,34 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            ENABLE_BITCODE=NO \
-            2>&1 | tail -80
+            ENABLE_BITCODE=NO
 
       - name: Package IPA
         if: success()
         run: |
-          APP_PATH=$(find build -name "DoveHarper.app" -type d | head -1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: Could not find DoveHarper.app"
-            find build -type d -name "*.app" 2>/dev/null || echo "No .app directories"
+          set -e
+          APP_PATH="build/Build/Products/Release-iphoneos/DoveHarper.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: DoveHarper.app not found at $APP_PATH"
+            echo "Contents of build/Build/Products:"
+            find build/Build/Products -type d -maxdepth 3 2>/dev/null || echo "No products"
             exit 1
           fi
-          
+
           echo "Found app at: $APP_PATH"
+          ls -la "$APP_PATH"
+
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r DoveHarper.ipa Payload
           ls -lh DoveHarper.ipa
+
+          # Verify IPA has binary
+          if ! unzip -l DoveHarper.ipa | grep -q "DoveHarper.app/DoveHarper"; then
+            echo "ERROR: IPA does not contain DoveHarper binary"
+            exit 1
+          fi
 
       - name: Upload IPA to Release
         if: github.ref == 'refs/heads/main'
@@ -71,7 +79,7 @@ jobs:
           generate_release_notes: true
           body: |
             ## DoveHarper iOS App v1.0.${{ github.run_number }}
-            
+
             ### Installation
             1. Download `DoveHarper.ipa` below
             2. Transfer to your iPhone (AirDrop, iCloud, etc.)
