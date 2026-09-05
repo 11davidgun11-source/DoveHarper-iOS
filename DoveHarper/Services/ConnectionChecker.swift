@@ -68,7 +68,7 @@ class ConnectionChecker {
             if http.statusCode == 200 {
                 if let items = try? JSONDecoder().decode([GitHubContent].self, from: data) {
                     let books = items.filter { $0.name.hasSuffix(".json") && !$0.name.hasPrefix("_") }
-                    let names = books.map { $0.replacingOccurrences(of: ".json", with: "") }
+                    let names = books.map { $0.name.replacingOccurrences(of: ".json", with: "") }
                     log("GitHub: OK — \(books.count) book\(books.count == 1 ? "" : "s"): \(names.joined(separator: ", "))")
                     return ServiceStatus(connected: true, detail: "\(books.count) book\(books.count == 1 ? "" : "s") found", error: nil)
                 }
