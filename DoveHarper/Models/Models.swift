@@ -285,11 +285,12 @@ struct BookJSON: Codable {
         coverImage = (try? c.decode(String.self, forKey: .coverImage)) ?? ""
         shortDescription = (try? c.decode(String.self, forKey: .shortDescription)) ?? ""
         description = (try? c.decode(String.self, forKey: .description)) ?? ""
-        contentNotes = (try? c.decode(String.self, forKey: .contentNotes)) ?? ""
-        if contentNotes.isEmpty {
-            if let arr = try? c.decode([String].self, forKey: .contentNotes) {
-                contentNotes = arr.joined(separator: ", ")
-            }
+        if let s = try? c.decode(String.self, forKey: .contentNotes), !s.isEmpty {
+            contentNotes = s
+        } else if let arr = try? c.decode([String].self, forKey: .contentNotes) {
+            contentNotes = arr.joined(separator: ", ")
+        } else {
+            contentNotes = ""
         }
         status = (try? c.decode(String.self, forKey: .status)) ?? "draft"
         sourceMarkdown = (try? c.decode(String.self, forKey: .sourceMarkdown)) ?? ""
