@@ -108,6 +108,7 @@ struct QueueView: View {
                     }
                     .navigationTitle("New Queue Entry")
                     .navigationBarTitleDisplayMode(.inline)
+                    .dismissKeyboardOnTap()
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Cancel") { showingNewEntry = false }

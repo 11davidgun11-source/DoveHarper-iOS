@@ -13,6 +13,8 @@ struct BookEditorView: View {
     @State private var showingManuscriptPicker = false
     @State private var showingPublishView = false
     @State private var showingPublishGate = false
+    @State private var showingDeleteConfirmation = false
+    @State private var deleteConfirmationText = ""
     @State private var errorMessage: String?
     @State private var showingError = false
 
@@ -158,9 +160,20 @@ struct BookEditorView: View {
                 }
                 .disabled(book.slug.isEmpty || book.title.isEmpty)
             }
+
+            if book.isLocalDraft {
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Draft", systemImage: "trash")
+                    }
+                }
+            }
         }
         .navigationTitle(book.title.isEmpty ? "New Book" : book.title)
         .navigationBarTitleDisplayMode(.inline)
+        .dismissKeyboardOnTap()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
@@ -197,6 +210,22 @@ struct BookEditorView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert("Delete Draft", isPresented: $showingDeleteConfirmation) {
+            TextField("Type DELETE to confirm", text: $deleteConfirmationText)
+            Button("Delete", role: .destructive) {
+                if deleteConfirmationText == "DELETE" {
+                    modelContext.delete(book)
+                    try? modelContext.save()
+                    dismiss()
+                }
+            }
+            .disabled(deleteConfirmationText != "DELETE")
+            Button("Cancel", role: .cancel) {
+                deleteConfirmationText = ""
+            }
+        } message: {
+            Text("This will permanently delete this draft. Type DELETE to confirm.")
         }
         .onAppear { loadExistingData() }
     }

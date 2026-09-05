@@ -286,6 +286,11 @@ struct BookJSON: Codable {
         shortDescription = (try? c.decode(String.self, forKey: .shortDescription)) ?? ""
         description = (try? c.decode(String.self, forKey: .description)) ?? ""
         contentNotes = (try? c.decode(String.self, forKey: .contentNotes)) ?? ""
+        if contentNotes.isEmpty {
+            if let arr = try? c.decode([String].self, forKey: .contentNotes) {
+                contentNotes = arr.joined(separator: ", ")
+            }
+        }
         status = (try? c.decode(String.self, forKey: .status)) ?? "draft"
         sourceMarkdown = (try? c.decode(String.self, forKey: .sourceMarkdown)) ?? ""
     }
@@ -323,7 +328,11 @@ struct BookJSON: Codable {
         try c.encode(coverImage, forKey: .coverImage)
         try c.encode(shortDescription, forKey: .shortDescription)
         try c.encode(description, forKey: .description)
-        try c.encode(contentNotes, forKey: .contentNotes)
+        if contentNotes.contains(", ") {
+            try c.encode(contentNotes.components(separatedBy: ", "), forKey: .contentNotes)
+        } else {
+            try c.encode(contentNotes, forKey: .contentNotes)
+        }
         try c.encode(status, forKey: .status)
         try c.encode(sourceMarkdown, forKey: .sourceMarkdown)
     }

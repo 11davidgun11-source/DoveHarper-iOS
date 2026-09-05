@@ -23,6 +23,7 @@
 		AA000014 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000016; };
 		AA000015 /* TagInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000017; };
 		AA000016 /* PublishGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000018; };
+		AA000017 /* DismissKeyboardOnTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000019; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		AB000016 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		AB000017 /* TagInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInputView.swift; sourceTree = "<group>"; };
 		AB000018 /* PublishGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishGateView.swift; sourceTree = "<group>"; };
+		AB000019 /* DismissKeyboardOnTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissKeyboardOnTap.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +127,7 @@
 				AB000016 /* FlowLayout.swift */,
 				AB000017 /* TagInputView.swift */,
 				AB000018 /* PublishGateView.swift */,
+				AB000019 /* DismissKeyboardOnTap.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -213,6 +216,7 @@
 				AA000014 /* FlowLayout.swift in Sources */,
 				AA000015 /* TagInputView.swift in Sources */,
 				AA000016 /* PublishGateView.swift in Sources */,
+				AA000017 /* DismissKeyboardOnTap.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

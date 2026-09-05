@@ -10,6 +10,21 @@ struct SettingsView: View {
     @State private var newRuleReplacement = ""
     @State private var saved = false
 
+    private let timezones = [
+        "UTC",
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+        "Europe/Lisbon",
+        "Asia/Tokyo",
+        "Asia/Shanghai",
+        "Australia/Sydney"
+    ]
+
     init() {
         let settings = AppSettings()
         _settings = State(initialValue: settings)
@@ -18,14 +33,21 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Text("Configure your GitHub repository and Shopify credentials to publish books.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("GitHub") {
                     TextField("Personal Access Token", text: $settings.githubPAT)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
-                    TextField("Owner", text: $settings.githubOwner)
+                        .textContentType(.password)
+                    TextField("Owner (e.g. doveharperauthor)", text: $settings.githubOwner)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
-                    TextField("Repository", text: $settings.githubRepo)
+                    TextField("Repository (e.g. DoveHarper-site)", text: $settings.githubRepo)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
                 }
@@ -34,16 +56,26 @@ struct SettingsView: View {
                     TextField("Shop URL (e.g. myshop.myshopify.com)", text: $settings.shopifyShopURL)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
+                        .keyboardType(.URL)
                     TextField("Access Token", text: $settings.shopifyAccessToken)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
+                        .textContentType(.password)
                 }
 
-                Section("Defaults") {
-                    TextField("Default Author", text: $settings.defaultAuthor)
-                    TextField("Timezone", text: $settings.timezone)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
+                Section {
+                    TextField("Default Author Name", text: $settings.defaultAuthor)
+                    Picker("Timezone", selection: $settings.timezone) {
+                        ForEach(timezones, id: \.self) { tz in
+                            Text(tz.replacingOccurrences(of: "/", with: " — ")).tag(tz)
+                        }
+                    }
+                } header: {
+                    Text("Defaults")
+                } footer: {
+                    Text("Author name used for new books. Timezone affects scheduled publish times.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Text Autocorrect") {
@@ -83,6 +115,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .onAppear { loadSettings() }
+            .dismissKeyboardOnTap()
             .sheet(isPresented: $showingAutocorrectRules) {
                 NavigationStack {
                     List {

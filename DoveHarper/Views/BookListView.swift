@@ -66,6 +66,13 @@ struct BookListView: View {
                                         BookRow(book: book)
                                     }
                                 }
+                                .onDelete { indexSet in
+                                    for index in indexSet {
+                                        let book = drafts[index]
+                                        modelContext.delete(book)
+                                    }
+                                    try? modelContext.save()
+                                }
                             }
                         }
 

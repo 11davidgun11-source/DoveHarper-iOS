@@ -45,11 +45,14 @@ class GitHubService {
         var books: [BookJSON] = []
 
         for content in contents where content.name.hasSuffix(".json") && !content.name.hasPrefix("_") {
-            guard let downloadURL = content.downloadURL else { continue }
-            guard let url = URL(string: downloadURL) else { continue }
-
-            let (bookData, _) = try await URLSession.shared.data(from: url)
-            if let book = try? JSONDecoder().decode(BookJSON.self, from: bookData) {
+            if let encodedContent = content.content,
+               let decodedData = Data(base64Encoded: encodedContent),
+               let book = try? JSONDecoder().decode(BookJSON.self, from: decodedData) {
+                books.append(book)
+            } else if let downloadURL = content.downloadURL,
+                      let url = URL(string: downloadURL),
+                      let (bookData, _) = try? await URLSession.shared.data(from: url),
+                      let book = try? JSONDecoder().decode(BookJSON.self, from: bookData) {
                 books.append(book)
             }
         }
