@@ -77,7 +77,7 @@ class GitHubService {
                        let downloadURLString = fileContent.downloadURL,
                        let downloadURL = URL(string: downloadURLString) {
                         let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
-                        if dlResp.statusCode == 200 {
+                        if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
                             decoded = dlData
                         }
                     }
@@ -85,7 +85,8 @@ class GitHubService {
 
                 // Method 3: Try git blob API
                 if decoded == nil {
-                    if let sha = try? JSONDecoder().decode(GitHubContent.self, from: bookData)?.sha {
+                    if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData) {
+                        let sha = fileContent.sha
                         let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
                         let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
                         if blobResp.statusCode == 200,
