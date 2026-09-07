@@ -10,6 +10,9 @@ struct BookDetailView: View {
     @State private var isDeleting = false
     @State private var showingPriceEdit = false
     @State private var newPrice = ""
+    @State private var newCheckoutURL = ""
+    @State private var showingCheckoutEdit = false
+    @State private var saved = false
 
     @Query private var allSettings: [AppSettings]
 
@@ -17,27 +20,55 @@ struct BookDetailView: View {
         List {
             Section {
                 if let url = book.liveURL {
-                    Link(destination: URL(string: url)!) {
+                    Button {
+                        UIApplication.shared.open(URL(string: url)!)
+                    } label: {
                         HStack {
                             Image(systemName: "arrow.up.right.square")
                             Text("View Live Page")
                         }
                     }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        UIApplication.shared.open(URL(string: url)!)
-                    })
+                }
+
+                Button {
+                    let shopURL = URL(string: "https://doveharpershop.myshopify.com/admin/products/new")!
+                    UIApplication.shared.open(shopURL)
+                } label: {
+                    HStack {
+                        Image(systemName: "cart.badge.plus")
+                        Text("Open Shopify — Create Product")
+                    }
                 }
 
                 if !book.primaryCheckoutURL.isEmpty {
-                    Link(destination: URL(string: book.primaryCheckoutURL)!) {
+                    Button {
+                        UIApplication.shared.open(URL(string: book.primaryCheckoutURL)!)
+                    } label: {
                         HStack {
-                            Image(systemName: "cart.fill")
-                            Text("Shopify Product")
+                            Image(systemName: "bag.fill")
+                            Text("View Shopify Product")
                         }
                     }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        UIApplication.shared.open(URL(string: book.primaryCheckoutURL)!)
-                    })
+                }
+            }
+
+            Section("Shopify Product URL") {
+                if book.primaryCheckoutURL.isEmpty {
+                    Text("No product URL set. Create the product in Shopify, then paste the URL here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(book.primaryCheckoutURL)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Button {
+                    newCheckoutURL = book.primaryCheckoutURL
+                    showingCheckoutEdit = true
+                } label: {
+                    Label(book.primaryCheckoutURL.isEmpty ? "Paste Product URL" : "Update Product URL", systemImage: "doc.on.clipboard")
                 }
             }
 
@@ -135,6 +166,25 @@ struct BookDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Shopify Product URL", isPresented: $showingCheckoutEdit) {
+            TextField("https://doveharpershop.myshopify.com/products/...", text: $newCheckoutURL)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            Button("Save") {
+                book.primaryCheckoutURL = newCheckoutURL
+                Task { await updateBook() }
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                withAnimation { saved = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    withAnimation { saved = false }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Paste the Shopify product URL after creating the product.")
+        }
     }
 
     private func deleteBook() async {
@@ -196,5 +246,3 @@ struct BookDetailView: View {
         }
     }
 }
-
-

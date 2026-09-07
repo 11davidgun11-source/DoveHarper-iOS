@@ -34,7 +34,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Configure your GitHub repository and Shopify credentials to publish books.")
+                    Text("Configure your GitHub repository to publish books. After publishing, open Shopify to create the product, then paste the product URL back into the book.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -50,17 +50,6 @@ struct SettingsView: View {
                     TextField("Repository (e.g. DoveHarper-site)", text: $settings.githubRepo)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
-                }
-
-                Section("Shopify") {
-                    TextField("Shop URL (e.g. myshop.myshopify.com)", text: $settings.shopifyShopURL)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                    TextField("Access Token", text: $settings.shopifyAccessToken)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .textContentType(.password)
                 }
 
                 Section {
@@ -95,16 +84,23 @@ struct SettingsView: View {
                 Section {
                     Button {
                         saveSettings()
-                        saved = true
+                        withAnimation {
+                            saved = true
+                        }
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            saved = false
+                            withAnimation {
+                                saved = false
+                            }
                         }
                     } label: {
                         HStack {
                             Spacer()
                             if saved {
-                                Label("Saved!", systemImage: "checkmark")
+                                Label("Saved!", systemImage: "checkmark.circle.fill")
                                     .foregroundStyle(.green)
+                                    .transition(.scale.combined(with: .opacity))
                             } else {
                                 Text("Save Settings")
                             }
@@ -174,8 +170,6 @@ struct SettingsView: View {
             existing.githubPAT = settings.githubPAT
             existing.githubOwner = settings.githubOwner
             existing.githubRepo = settings.githubRepo
-            existing.shopifyShopURL = settings.shopifyShopURL
-            existing.shopifyAccessToken = settings.shopifyAccessToken
             existing.defaultAuthor = settings.defaultAuthor
             existing.timezone = settings.timezone
             existing.autocorrectRules = settings.autocorrectRules

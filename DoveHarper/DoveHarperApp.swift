@@ -80,54 +80,6 @@ struct ContentView: View {
             }
         }
 
-        // --- Shopify ---
-        lines.append("")
-        lines.append("Shopify:")
-        if settings.shopifyAccessToken.isEmpty {
-            lines.append("  No access token configured.")
-        } else {
-            let url = URL(string: "https://\(settings.shopifyShopURL)/admin/api/2026-07/shop.json")!
-            var req = URLRequest(url: url)
-            req.setValue(settings.shopifyAccessToken, forHTTPHeaderField: "X-Shopify-Access-Token")
-            do {
-                let (data, resp) = try await URLSession.shared.data(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if code == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let shop = json["shop"] as? [String: Any],
-                   let name = shop["name"] as? String {
-                    lines.append("  Connected. \(name)")
-                } else {
-                    lines.append("  HTTP \(code) — bad token or shop URL.")
-                }
-            } catch {
-                lines.append("  \(error.localizedDescription)")
-            }
-        }
-
-        // --- TryPost ---
-        lines.append("")
-        lines.append("TryPost:")
-        if settings.tryPostAPIKey.isEmpty {
-            lines.append("  No API key configured.")
-        } else {
-            let url = URL(string: "http://100.101.187.102:8000/api/social-accounts")!
-            var req = URLRequest(url: url)
-            req.setValue("Bearer \(settings.tryPostAPIKey)", forHTTPHeaderField: "Authorization")
-            do {
-                let (data, resp) = try await URLSession.shared.data(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if code == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let accounts = json["accounts"] as? [[String: Any]] {
-                    let platforms = accounts.compactMap { $0["platform"] as? String }
-                    lines.append("  Connected. \(platforms.count) account\(platforms.count == 1 ? "" : "s"): \(platforms.joined(separator: ", "))")
-                } else {
-                    lines.append("  HTTP \(code) — bad API key.")
-                }
-            } catch {
-                lines.append("  Server offline or unreachable.")
-            }
-        }
-
         alertTitle = "System Check"
         alertMessage = lines.joined(separator: "\n")
         showAlert = true

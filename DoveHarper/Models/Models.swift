@@ -127,8 +127,6 @@ final class AppSettings {
     var githubPAT: String
     var githubOwner: String
     var githubRepo: String
-    var shopifyShopURL: String
-    var shopifyAccessToken: String
     var tryPostAPIKey: String
     var defaultAuthor: String
     var timezone: String
@@ -138,8 +136,6 @@ final class AppSettings {
         self.githubPAT = Secrets.githubPAT
         self.githubOwner = Secrets.githubOwner
         self.githubRepo = Secrets.githubRepo
-        self.shopifyShopURL = Secrets.shopifyShopURL
-        self.shopifyAccessToken = Secrets.shopifyAccessToken
         self.tryPostAPIKey = Secrets.tryPostAPIKey
         self.defaultAuthor = "Dove Harper"
         self.timezone = "Europe/Lisbon"
