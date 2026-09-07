@@ -97,7 +97,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .onAppear { loadSettings() }
-            .dismissKeyboardOnTap()
+            .scrollDismissesKeyboard(.interactively)
             .sheet(isPresented: $showingAutocorrectRules) {
                 NavigationStack {
                     List {

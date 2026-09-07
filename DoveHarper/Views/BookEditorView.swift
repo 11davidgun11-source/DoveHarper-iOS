@@ -173,7 +173,7 @@ struct BookEditorView: View {
         }
         .navigationTitle(book.title.isEmpty ? "New Book" : book.title)
         .navigationBarTitleDisplayMode(.inline)
-        .dismissKeyboardOnTap()
+        .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {

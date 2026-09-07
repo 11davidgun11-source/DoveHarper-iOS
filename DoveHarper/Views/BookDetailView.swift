@@ -136,7 +136,7 @@ struct BookDetailView: View {
         }
         .navigationTitle(book.title)
         .navigationBarTitleDisplayMode(.inline)
-        .dismissKeyboardOnTap()
+        .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showingEdit) {
             NavigationStack {
                 BookEditorView(book: book)

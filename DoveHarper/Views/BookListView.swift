@@ -164,15 +164,18 @@ struct BookListView: View {
 
             print("[BookListView] Fetched \(books.count) books from GitHub")
 
+            // Clear all existing books to remove stale drafts
+            let allBooksDescriptor = FetchDescriptor<BookEntity>()
+            let allExisting = try modelContext.fetch(allBooksDescriptor)
+            for old in allExisting {
+                modelContext.delete(old)
+            }
+
+            // Insert fresh data from GitHub
             for bookJSON in books {
-                let existing = publishedBooks.first { $0.slug == bookJSON.slug }
-                if let existing = existing {
-                    updateEntity(existing, from: bookJSON)
-                } else {
-                    let entity = createEntity(from: bookJSON)
-                    modelContext.insert(entity)
-                    print("[BookListView] Inserted book: \(bookJSON.title)")
-                }
+                let entity = createEntity(from: bookJSON)
+                modelContext.insert(entity)
+                print("[BookListView] Inserted book: \(bookJSON.title)")
             }
 
             try modelContext.save()
