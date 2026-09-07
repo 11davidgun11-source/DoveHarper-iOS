@@ -44,16 +44,21 @@ class GitHubService {
 
         let contents = try JSONDecoder().decode([GitHubContent].self, from: data)
         var books: [BookJSON] = []
+        var errors: [String] = []
 
         let jsonFiles = contents.filter { $0.name.hasSuffix(".json") && !$0.name.hasPrefix("_") }
         print("[GitHubService] Found \(jsonFiles.count) book files")
+
+        if jsonFiles.isEmpty {
+            throw GitHubError.apiError("No .json book files found in dove-harper-site/content/books/")
+        }
 
         for file in jsonFiles {
             let bookPath = "/repos/\(owner)/\(repo)/contents/dove-harper-site/content/books/\(file.name)"
             do {
                 let (bookData, bookResp) = try await makeRequest(path: bookPath, pat: pat)
                 guard bookResp.statusCode == 200 else {
-                    print("[GitHubService] Failed to fetch \(file.name): HTTP \(bookResp.statusCode)")
+                    errors.append("\(file.name): HTTP \(bookResp.statusCode)")
                     continue
                 }
                 let fileContent = try JSONDecoder().decode(GitHubContent.self, from: bookData)
@@ -64,14 +69,12 @@ class GitHubService {
                         books.append(book)
                         print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
                     } catch {
-                        print("[GitHubService] DECODE FAILED for \(file.name): \(error)")
-                        if let raw = String(data: decoded, encoding: .utf8) {
-                            print("[GitHubService] Raw JSON (first 500): \(raw.prefix(500))")
-                        }
+                        let msg = "\(file.name): \(error.localizedDescription)"
+                        errors.append(msg)
+                        print("[GitHubService] DECODE FAILED: \(msg)")
                     }
-                } else {
-                    print("[GitHubService] No base64 content for \(file.name) (content=\(fileContent.content == nil ? "nil" : "exists")), trying git blob")
-                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(fileContent.sha)"
+                } else if let sha = fileContent.sha {
+                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
                     let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
                     if blobResp.statusCode == 200,
                        let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData),
@@ -81,15 +84,21 @@ class GitHubService {
                             books.append(book)
                             print("[GitHubService] Loaded via blob: \(book.title) [\(book.status)]")
                         } catch {
-                            print("[GitHubService] Blob DECODE FAILED for \(file.name): \(error)")
+                            errors.append("\(file.name) (blob): \(error.localizedDescription)")
                         }
                     } else {
-                        print("[GitHubService] Failed to load \(file.name) via blob")
+                        errors.append("\(file.name): no content and blob fetch failed")
                     }
+                } else {
+                    errors.append("\(file.name): no base64 content, no sha")
                 }
             } catch {
-                print("[GitHubService] Error fetching \(file.name): \(error.localizedDescription)")
+                errors.append("\(file.name): \(error.localizedDescription)")
             }
+        }
+
+        if books.isEmpty && !errors.isEmpty {
+            throw GitHubError.apiError("Decode failed for all books:\n" + errors.joined(separator: "\n"))
         }
 
         return books

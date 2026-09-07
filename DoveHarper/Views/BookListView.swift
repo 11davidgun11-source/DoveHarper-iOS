@@ -168,11 +168,6 @@ struct BookListView: View {
 
             print("[BookListView] Fetched \(books.count) books from GitHub")
 
-            if books.isEmpty {
-                errorMessage = "Found 0 books. Check GitHub repo path: \(settings.githubOwner)/\(settings.githubRepo)"
-                return
-            }
-
             // Clear all existing books to remove stale drafts
             let allBooksDescriptor = FetchDescriptor<BookEntity>()
             let allExisting = try modelContext.fetch(allBooksDescriptor)
@@ -193,7 +188,8 @@ struct BookListView: View {
             print("[BookListView] Saved \(books.count) books, lastSynced set")
         } catch {
             print("[BookListView] Error: \(error.localizedDescription)")
-            errorMessage = "Failed to load books: \(error.localizedDescription)"
+            let msg = error.localizedDescription
+            errorMessage = msg.count > 200 ? String(msg.prefix(200)) + "..." : msg
         }
     }
 
