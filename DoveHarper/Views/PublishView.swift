@@ -123,63 +123,48 @@ struct PublishView: View {
             return
         }
 
-        status = .pushingManuscript
-        statusText = "Uploading manuscript..."
+        statusText = "Uploading files..."
         progress = 0.1
 
-        let github = GitHubService()
+        let git = GitService()
+        let slug = book.slug
+        let bookPathPrefix = "dove-harper-site/"
+        var files: [(path: String, data: Data)] = []
 
         do {
-            if !manuscriptText.isEmpty {
-                let manuscriptData = manuscriptText.data(using: .utf8)!
-                try await github.pushFile(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/manuscripts/\(book.slug).md",
-                    content: manuscriptData,
-                    message: "Add manuscript for \(book.title)",
-                    pat: settings.githubPAT
-                )
+            // Collect all files for atomic commit
+            if !manuscriptText.isEmpty, let manuscriptData = manuscriptText.data(using: .utf8) {
+                files.append((path: "\(bookPathPrefix)manuscripts/\(slug).md", data: manuscriptData))
             }
 
-            status = .pushingCover
-            statusText = "Uploading cover..."
-            progress = 0.25
-
-            if let cover = coverImage,
-               let jpegData = cover.jpegData(compressionQuality: 0.9) {
-                try await github.pushFile(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/public/assets/img/covers/\(book.slug)-cover.jpg",
-                    content: jpegData,
-                    message: "Add cover for \(book.title)",
-                    pat: settings.githubPAT
-                )
+            if let cover = coverImage, let jpegData = cover.jpegData(compressionQuality: 0.9) {
+                files.append((path: "\(bookPathPrefix)public/assets/img/covers/\(slug)-cover.jpg", data: jpegData))
             }
-
-            status = .pushingBookJSON
-            statusText = "Pushing book metadata..."
-            progress = 0.4
 
             book.status = "published"
             book.isLocalDraft = false
             book.lastPublishedDate = Date()
-            book.liveURL = "https://doveharperauthor.com/books/\(book.slug)/"
+            book.liveURL = "https://doveharperauthor.com/books/\(slug)/"
 
             let bookJSON = book.toBookJSON()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(bookJSON)
+            files.append((path: "\(bookPathPrefix)content/books/\(slug).json", data: jsonData))
 
-            try await github.pushFile(
+            progress = 0.3
+            statusText = "Creating atomic commit..."
+
+            let commitSHA = try await git.commitChanges(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/content/books/\(book.slug).json",
-                content: jsonData,
+                branch: "main",
                 message: "Add \(book.title) to catalog",
+                files: files,
                 pat: settings.githubPAT
             )
+
+            print("[Publish] Committed: \(commitSHA.prefix(8))")
 
             modelContext.insert(book)
             try modelContext.save()
@@ -192,7 +177,7 @@ struct PublishView: View {
             let finalURL = try await conversion.triggerAndMonitorConversion(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                slug: book.slug,
+                slug: slug,
                 pat: settings.githubPAT,
                 onStatus: { newStatus in
                     DispatchQueue.main.async {
@@ -213,10 +198,6 @@ struct PublishView: View {
             statusText = "Publishing failed"
         }
     }
-}
-
-enum PublishingState {
-    case publishing
 }
 
 extension PublishStatus {

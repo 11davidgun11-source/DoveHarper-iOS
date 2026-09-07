@@ -142,26 +142,23 @@ struct QueueView: View {
             return
         }
 
-        let github = GitHubService()
+        let git = GitService()
+        let bookPathPrefix = "dove-harper-site/"
+        var files: [(path: String, data: Data)] = []
 
         do {
             if let manuscriptData = entry.manuscriptData {
-                try await github.pushFile(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/manuscripts/\(entry.bookSlug).md",
-                    content: manuscriptData,
-                    message: "Add manuscript for \(entry.bookTitle)",
-                    pat: settings.githubPAT
-                )
+                files.append((path: "\(bookPathPrefix)manuscripts/\(entry.bookSlug).md", data: manuscriptData))
             }
 
-            try await github.pushFile(
+            files.append((path: "\(bookPathPrefix)content/books/\(entry.bookSlug).json", data: bookData))
+
+            _ = try await git.commitChanges(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/content/books/\(entry.bookSlug).json",
-                content: bookData,
+                branch: "main",
                 message: "Publish \(entry.bookTitle)",
+                files: files,
                 pat: settings.githubPAT
             )
 

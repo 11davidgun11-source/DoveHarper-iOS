@@ -3,8 +3,8 @@ import SwiftData
 
 struct BookListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(filter: #Predicate<BookEntity> { $0.isLocalDraft == false }) private var publishedBooks: [BookEntity]
     @Query(filter: #Predicate<BookEntity> { $0.isLocalDraft == true }) private var drafts: [BookEntity]
+    @State private var liveBooks: [BookJSON] = []
     @State private var showingNewBook = false
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -12,13 +12,19 @@ struct BookListView: View {
     @State private var lastSynced: Date?
     @State private var patMissing = false
 
-    private var allBooks: [BookEntity] {
-        drafts + publishedBooks
+    private var fileManager = BookFileManager()
+
+    private var filteredLive: [BookJSON] {
+        if searchText.isEmpty { return liveBooks }
+        return liveBooks.filter {
+            $0.title.localizedCaseInsensitiveContains(searchText) ||
+            $0.slug.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
-    private var filteredBooks: [BookEntity] {
-        if searchText.isEmpty { return allBooks }
-        return allBooks.filter {
+    private var filteredDrafts: [BookEntity] {
+        if searchText.isEmpty { return drafts }
+        return drafts.filter {
             $0.title.localizedCaseInsensitiveContains(searchText) ||
             $0.slug.localizedCaseInsensitiveContains(searchText)
         }
@@ -29,15 +35,15 @@ struct BookListView: View {
             Group {
                 if isLoading {
                     ProgressView("Loading books from site...")
-                } else if filteredBooks.isEmpty {
+                } else if liveBooks.isEmpty && drafts.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "book.closed")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
-                        Text("No books yet")
+                        Text("No books")
                             .font(.title2)
                         if patMissing {
-                            Text("Configure your GitHub PAT in Settings to load books")
+                            Text("Configure your GitHub PAT in Settings")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                                 .multilineTextAlignment(.center)
@@ -49,49 +55,45 @@ struct BookListView: View {
                     }
                 } else {
                     List {
-                        if let lastSynced {
-                            Section {
-                                HStack {
-                                    Text("Synced \(lastSynced.formatted(.relative(presentation: .named)))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(publishedBooks.count) published, \(drafts.count) drafts")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                        // Live Books — always fetched fresh, empty if offline
+                        Section("Live Books") {
+                            if liveBooks.isEmpty {
+                                Text("No live books found (offline?)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(filteredLive, id: \.slug) { book in
+                                    NavigationLink(destination: BookDetailView(
+                                        bookJSON: book,
+                                        isDraft: false
+                                    )) {
+                                        LiveBookRow(book: book)
+                                    }
                                 }
                             }
                         }
 
-                        if !drafts.isEmpty {
+                        // Drafts — local files only
+                        if !filteredDrafts.isEmpty {
                             Section("Drafts") {
-                                ForEach(drafts) { book in
+                                ForEach(filteredDrafts) { book in
                                     NavigationLink(destination: BookEditorView(book: book)) {
-                                        BookRow(book: book)
+                                        DraftBookRow(book: book)
                                     }
                                 }
                                 .onDelete { indexSet in
                                     for index in indexSet {
-                                        let book = drafts[index]
+                                        let book = filteredDrafts[index]
+                                        try? fileManager.deleteDraft(slug: book.slug)
                                         modelContext.delete(book)
                                     }
                                     try? modelContext.save()
                                 }
                             }
                         }
-
-                        if !publishedBooks.isEmpty {
-                            Section("Published") {
-                                ForEach(publishedBooks) { book in
-                                    NavigationLink(destination: BookDetailView(book: book)) {
-                                        BookRow(book: book)
-                                    }
-                                }
-                            }
-                        }
                     }
                     .refreshable {
-                        await refreshBooks()
+                        await refreshLiveBooks()
                     }
                 }
             }
@@ -100,7 +102,7 @@ struct BookListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        Task { await refreshBooks() }
+                        Task { await refreshLiveBooks() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -130,11 +132,16 @@ struct BookListView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-            .task { await refreshBooks() }
+            .task {
+                await refreshLiveBooks()
+                loadLocalDrafts()
+            }
         }
     }
 
-    private func refreshBooks() async {
+    // MARK: - Fetch Live Books from GitHub (always fresh, empty if offline)
+
+    private func refreshLiveBooks() async {
         let descriptor = FetchDescriptor<AppSettings>()
         let settings: AppSettings
         do {
@@ -166,34 +173,50 @@ struct BookListView: View {
                 pat: settings.githubPAT
             )
 
-            print("[BookListView] Fetched \(books.count) books from GitHub")
-
-            // Clear all existing books to remove stale drafts
-            let allBooksDescriptor = FetchDescriptor<BookEntity>()
-            let allExisting = try modelContext.fetch(allBooksDescriptor)
-            for old in allExisting {
-                modelContext.delete(old)
-            }
-            print("[BookListView] Cleared \(allExisting.count) old books")
-
-            // Insert fresh data from GitHub
-            for bookJSON in books {
-                let entity = createEntity(from: bookJSON)
-                modelContext.insert(entity)
-                print("[BookListView] Inserted: \(bookJSON.title) (draft=\(entity.isLocalDraft), status=\(entity.status))")
-            }
-
-            try modelContext.save()
+            // Always override — clear old live books, insert fresh
+            liveBooks = books
             lastSynced = Date()
-            print("[BookListView] Saved \(books.count) books, lastSynced set")
+            print("[BookListView] Loaded \(books.count) live books from GitHub")
         } catch {
-            print("[BookListView] Error: \(error.localizedDescription)")
+            // Offline or error — show empty live books, keep drafts
+            liveBooks = []
             let msg = error.localizedDescription
             errorMessage = msg.count > 200 ? String(msg.prefix(200)) + "..." : msg
+            print("[BookListView] Live fetch failed: \(msg)")
         }
     }
 
-    private func createEntity(from book: BookJSON) -> BookEntity {
+    // MARK: - Load Local Drafts from File System
+
+    private func loadLocalDrafts() {
+        let slugs = fileManager.listDraftSlugs()
+
+        // Remove SwiftData drafts that no longer exist on disk
+        let existingSlugs = Set(drafts.map { $0.slug })
+        let currentSlugs = Set(slugs)
+        for draft in drafts where !currentSlugs.contains(draft.slug) {
+            modelContext.delete(draft)
+        }
+
+        // Add new or updated drafts
+        for slug in slugs {
+            if let bookJSON = fileManager.loadDraft(slug: slug) {
+                if let existing = drafts.first(where: { $0.slug == slug }) {
+                    // Update existing
+                    updateEntity(existing, from: bookJSON)
+                } else {
+                    // Create new
+                    let entity = createDraftEntity(from: bookJSON)
+                    modelContext.insert(entity)
+                }
+            }
+        }
+
+        try? modelContext.save()
+        print("[BookListView] Loaded \(slugs.count) local drafts")
+    }
+
+    private func createDraftEntity(from book: BookJSON) -> BookEntity {
         let entity = BookEntity(slug: book.slug, title: book.title, author: book.author)
         entity.series = book.series
         entity.seriesOrder = book.seriesOrder ?? ""
@@ -204,7 +227,7 @@ struct BookListView: View {
         entity.tropes = book.tropes
         entity.themes = book.themes
         entity.forFansOf = book.forFansOf
-        entity.contentNotes = book.contentNotes.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        entity.contentNotes = book.contentNotes.isEmpty ? [] : book.contentNotes.components(separatedBy: ", ")
         entity.tickerQuotes = book.tickerQuotes
         entity.shortDescription = book.shortDescription
         entity.descriptionText = book.description
@@ -213,8 +236,7 @@ struct BookListView: View {
         entity.status = book.status
         entity.primaryCheckoutURL = book.primaryCheckoutURL
         entity.checkoutProviderLabel = book.checkoutProviderLabel
-        entity.isLocalDraft = false
-        entity.liveURL = "https://doveharperauthor.com/books/\(book.slug)/"
+        entity.isLocalDraft = true
         return entity
     }
 
@@ -230,7 +252,7 @@ struct BookListView: View {
         entity.tropes = book.tropes
         entity.themes = book.themes
         entity.forFansOf = book.forFansOf
-        entity.contentNotes = book.contentNotes.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        entity.contentNotes = book.contentNotes.isEmpty ? [] : book.contentNotes.components(separatedBy: ", ")
         entity.tickerQuotes = book.tickerQuotes
         entity.shortDescription = book.shortDescription
         entity.descriptionText = book.description
@@ -239,12 +261,14 @@ struct BookListView: View {
         entity.status = book.status
         entity.primaryCheckoutURL = book.primaryCheckoutURL
         entity.checkoutProviderLabel = book.checkoutProviderLabel
-        entity.liveURL = "https://doveharperauthor.com/books/\(book.slug)/"
+        entity.isLocalDraft = true
     }
 }
 
-struct BookRow: View {
-    let book: BookEntity
+// MARK: - Row Views
+
+struct LiveBookRow: View {
+    let book: BookJSON
 
     var body: some View {
         HStack {
@@ -271,22 +295,39 @@ struct BookRow: View {
                             .cornerRadius(4)
                     }
                 }
-                if book.isLocalDraft {
+            }
+            Spacer()
+            Link(destination: URL(string: "https://doveharperauthor.com/books/\(book.slug)/")!) {
+                Image(systemName: "arrow.up.right.square")
+                    .foregroundStyle(.blue)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct DraftBookRow: View {
+    let book: BookEntity
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(book.title)
+                    .font(.headline)
+                HStack(spacing: 8) {
+                    Text(book.series)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text("Draft")
                         .font(.caption2)
                         .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange.opacity(0.2))
+                        .cornerRadius(4)
                 }
             }
             Spacer()
-            if let url = book.liveURL, !book.isLocalDraft {
-                Link(destination: URL(string: url)!) {
-                    Image(systemName: "arrow.up.right.square")
-                        .foregroundStyle(.blue)
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    UIApplication.shared.open(URL(string: url)!)
-                })
-            }
         }
         .padding(.vertical, 4)
     }

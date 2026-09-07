@@ -4,18 +4,20 @@ import PhotosUI
 
 struct BookDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Bindable var book: BookEntity
+    @Environment(\.dismiss) private var dismiss
+
+    let bookJSON: BookJSON
+    @State private var isDraft: Bool
 
     @State private var isEditing = false
     @State private var isSaving = false
+    @State private var publishSuccess = false
     @State private var saveError: String?
     @State private var showingDeleteConfirmation = false
     @State private var deleteConfirmationText = ""
-    @State private var showingSaveConfirmation = false
+    @State private var showingPublishConfirmation = false
     @State private var changedFields: [String] = []
-    @State private var needsWorkflow = false
     @State private var showingError = false
-    @State private var saved = false
 
     // Edit state
     @State private var editTitle = ""
@@ -44,7 +46,6 @@ struct BookDetailView: View {
     // File pickers
     @State private var showingManuscriptPicker = false
     @State private var selectedCoverItem: PhotosPickerItem?
-    @State private var selectedCoverImage: UIImage?
 
     // Original values for change detection
     @State private var origTitle = ""
@@ -68,6 +69,13 @@ struct BookDetailView: View {
 
     @Query private var allSettings: [AppSettings]
     private var settings: AppSettings? { allSettings.first }
+    private let fileManager = BookFileManager()
+    private let bookPathPrefix = "dove-harper-site/"
+
+    init(bookJSON: BookJSON, isDraft: Bool = false) {
+        self.bookJSON = bookJSON
+        self._isDraft = State(initialValue: isDraft)
+    }
 
     var body: some View {
         Group {
@@ -77,27 +85,30 @@ struct BookDetailView: View {
                 readOnlyView
             }
         }
-        .navigationTitle(book.title)
+        .navigationTitle(bookJSON.title)
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if isEditing {
                     HStack(spacing: 16) {
-                        Button("Cancel") {
-                            exitEditMode()
+                        Button("Cancel") { exitEditMode() }
+                            .disabled(isSaving)
+
+                        Button("Save Locally") {
+                            Task { await saveDraftLocally() }
                         }
                         .disabled(isSaving)
 
-                        Button("Save") {
-                            Task { await performSave() }
+                        Button("Publish") {
+                            computeChanges()
+                            showingPublishConfirmation = true
                         }
                         .disabled(isSaving)
+                        .bold()
                     }
                 } else {
-                    Button("Edit") {
-                        enterEditMode()
-                    }
+                    Button("Edit") { enterEditMode() }
                 }
             }
         }
@@ -109,40 +120,38 @@ struct BookDetailView: View {
                 }
             }
             .disabled(deleteConfirmationText != "DELETE")
-            Button("Cancel", role: .cancel) {
-                deleteConfirmationText = ""
-            }
+            Button("Cancel", role: .cancel) { deleteConfirmationText = "" }
         } message: {
             Text("This will remove the book from the live site. Type DELETE to confirm.")
         }
-        .alert("Confirm Changes", isPresented: $showingSaveConfirmation) {
-            Button("Save", role: .destructive) {
-                Task { await executeSave() }
+        .alert("Publish to GitHub", isPresented: $showingPublishConfirmation) {
+            Button("Publish", role: .destructive) {
+                Task { await publishToGitHub() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             VStack(alignment: .leading, spacing: 4) {
-                if needsWorkflow {
-                    Text("⚠️ These changes will regenerate EPUB/PDF and update the live site:")
-                        .font(.headline)
-                } else {
-                    Text("These changes will update the live site:")
-                        .font(.headline)
-                }
+                Text("These changes will be committed to GitHub:")
+                    .font(.headline)
                 ForEach(changedFields, id: \.self) { field in
                     Text("• \(field)")
                 }
                 Text("")
-                if needsWorkflow {
-                    Text("A GitHub Action will run to regenerate EPUB and PDF samples.")
-                }
-                Text("Continue?")
+                Text("A single atomic commit will be created. A GitHub Action may run to regenerate EPUB/PDF.")
             }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") { saveError = nil }
         } message: {
             Text(saveError ?? "")
+        }
+        .alert("Published!", isPresented: .constant(publishSuccess)) {
+            Button("OK") {
+                publishSuccess = false
+                isEditing = false
+            }
+        } message: {
+            Text("Changes pushed to GitHub. The site will update shortly.")
         }
         .onChange(of: selectedCoverImage) { _, newValue in
             if let image = newValue {
@@ -157,14 +166,12 @@ struct BookDetailView: View {
     private var readOnlyView: some View {
         List {
             Section {
-                if let url = book.liveURL {
-                    Button {
-                        UIApplication.shared.open(URL(string: url)!)
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.up.right.square")
-                            Text("View Live Page")
-                        }
+                Button {
+                    UIApplication.shared.open(URL(string: "https://doveharperauthor.com/books/\(bookJSON.slug)/")!)
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.up.right.square")
+                        Text("View Live Page")
                     }
                 }
 
@@ -178,9 +185,9 @@ struct BookDetailView: View {
                     }
                 }
 
-                if !book.primaryCheckoutURL.isEmpty {
+                if !bookJSON.primaryCheckoutURL.isEmpty {
                     Button {
-                        UIApplication.shared.open(URL(string: book.primaryCheckoutURL)!)
+                        UIApplication.shared.open(URL(string: bookJSON.primaryCheckoutURL)!)
                     } label: {
                         HStack {
                             Image(systemName: "bag.fill")
@@ -191,12 +198,12 @@ struct BookDetailView: View {
             }
 
             Section("Shopify Product URL") {
-                if book.primaryCheckoutURL.isEmpty {
+                if bookJSON.primaryCheckoutURL.isEmpty {
                     Text("No product URL set.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(book.primaryCheckoutURL)
+                    Text(bookJSON.primaryCheckoutURL)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -204,46 +211,47 @@ struct BookDetailView: View {
             }
 
             Section("Info") {
-                LabeledContent("Title", value: book.title)
-                LabeledContent("Slug", value: book.slug)
-                LabeledContent("Author", value: book.author)
-                LabeledContent("Series", value: book.series)
-                if !book.seriesOrder.isEmpty {
-                    LabeledContent("Series Order", value: book.seriesOrder)
+                LabeledContent("Title", value: bookJSON.title)
+                LabeledContent("Slug", value: bookJSON.slug)
+                LabeledContent("Author", value: bookJSON.author)
+                LabeledContent("Series", value: bookJSON.series)
+                if let order = bookJSON.seriesOrder, !order.isEmpty {
+                    LabeledContent("Series Order", value: order)
                 }
-                LabeledContent("Word Count", value: "\(book.wordCount)")
-                LabeledContent("Release Date", value: book.releaseDate)
-                LabeledContent("Status", value: book.status)
+                LabeledContent("Word Count", value: "\(bookJSON.wordCount)")
+                LabeledContent("Release Date", value: bookJSON.releaseDate)
+                LabeledContent("Status", value: bookJSON.status)
             }
 
             Section("Classification") {
-                if !book.tropes.isEmpty {
-                    FlowLayout(title: "Tropes", items: book.tropes)
+                if !bookJSON.tropes.isEmpty {
+                    FlowLayout(title: "Tropes", items: bookJSON.tropes)
                 }
-                if !book.themes.isEmpty {
-                    FlowLayout(title: "Themes", items: book.themes)
+                if !bookJSON.themes.isEmpty {
+                    FlowLayout(title: "Themes", items: bookJSON.themes)
                 }
-                if !book.contentNotes.isEmpty {
-                    FlowLayout(title: "Content Notes", items: book.contentNotes)
+                if !bookJSON.contentNotes.isEmpty {
+                    let notes = bookJSON.contentNotes.components(separatedBy: ", ")
+                    FlowLayout(title: "Content Notes", items: notes)
                 }
-                if !book.forFansOf.isEmpty {
-                    FlowLayout(title: "For Fans Of", items: book.forFansOf)
+                if !bookJSON.forFansOf.isEmpty {
+                    FlowLayout(title: "For Fans Of", items: bookJSON.forFansOf)
                 }
             }
 
             Section("Pricing") {
                 HStack {
                     Text("Price:")
-                    Text(book.isFree ? "Free" : (book.priceLabel.isEmpty ? "Not set" : book.priceLabel))
+                    Text(bookJSON.isFree ? "Free" : (bookJSON.priceLabel.isEmpty ? "Not set" : bookJSON.priceLabel))
                 }
             }
 
             Section("Description") {
-                if !book.shortDescription.isEmpty {
-                    Text(book.shortDescription)
+                if !bookJSON.shortDescription.isEmpty {
+                    Text(bookJSON.shortDescription)
                         .font(.subheadline)
                 }
-                Text(book.descriptionText)
+                Text(bookJSON.description)
                     .font(.caption)
             }
 
@@ -264,7 +272,7 @@ struct BookDetailView: View {
             Section("Basic Info") {
                 TextField("Title", text: $editTitle)
                 TextField("Author", text: $editAuthor)
-                TextField("Slug", text: .constant(book.slug))
+                TextField("Slug", text: .constant(bookJSON.slug))
                     .foregroundStyle(.secondary)
                     .disabled(true)
                 TextField("Series", text: $editSeries)
@@ -347,12 +355,12 @@ struct BookDetailView: View {
                         Text("\(wordCount) words loaded")
                             .foregroundStyle(.green)
                     }
-                } else if book.manuscriptPath == nil {
-                    Button {
-                        Task { await fetchManuscriptFromGitHub() }
-                    } label: {
-                        Label("Fetch Manuscript from GitHub", systemImage: "arrow.down.circle")
-                    }
+                }
+
+                Button {
+                    Task { await fetchManuscriptFromGitHub() }
+                } label: {
+                    Label("Fetch Manuscript from GitHub", systemImage: "arrow.down.circle")
                 }
 
                 Button {
@@ -382,26 +390,25 @@ struct BookDetailView: View {
     // MARK: - Edit Mode
 
     private func enterEditMode() {
-        editTitle = book.title
-        editAuthor = book.author
-        editSeries = book.series
-        editSeriesOrder = book.seriesOrder
-        editReleaseDate = book.releaseDate
-        editShortDescription = book.shortDescription
-        editDescriptionText = book.descriptionText
-        editPriceLabel = book.priceLabel
-        editIsFree = book.isFree
-        editIsLatestRelease = book.isLatestRelease
-        editIsNovella = book.isNovella
-        editPrimaryCheckoutURL = book.primaryCheckoutURL
-        editCheckoutProviderLabel = book.checkoutProviderLabel
-        editTropes = book.tropes
-        editThemes = book.themes
-        editForFansOf = book.forFansOf
-        editContentNotes = book.contentNotes
-        editTickerQuotes = book.tickerQuotes
+        editTitle = bookJSON.title
+        editAuthor = bookJSON.author
+        editSeries = bookJSON.series
+        editSeriesOrder = bookJSON.seriesOrder ?? ""
+        editReleaseDate = bookJSON.releaseDate
+        editShortDescription = bookJSON.shortDescription
+        editDescriptionText = bookJSON.description
+        editPriceLabel = bookJSON.priceLabel
+        editIsFree = bookJSON.isFree
+        editIsLatestRelease = bookJSON.isLatestRelease
+        editIsNovella = bookJSON.isNovella
+        editPrimaryCheckoutURL = bookJSON.primaryCheckoutURL
+        editCheckoutProviderLabel = bookJSON.checkoutProviderLabel
+        editTropes = bookJSON.tropes
+        editThemes = bookJSON.themes
+        editForFansOf = bookJSON.forFansOf
+        editContentNotes = bookJSON.contentNotes.isEmpty ? [] : bookJSON.contentNotes.components(separatedBy: ", ")
+        editTickerQuotes = bookJSON.tickerQuotes
 
-        // Snapshot originals
         origTitle = editTitle
         origAuthor = editAuthor
         origSeries = editSeries
@@ -424,22 +431,6 @@ struct BookDetailView: View {
         manuscriptChanged = false
         coverChanged = false
 
-        // Load manuscript from local path if available
-        if let path = book.manuscriptPath,
-           let data = FileManager.default.contents(atPath: path),
-           let text = String(data: data, encoding: .utf8) {
-            editManuscriptText = text
-        }
-
-        // Load cover from local path if available, otherwise fetch from GitHub
-        if let path = book.coverImagePath,
-           let data = FileManager.default.contents(atPath: path),
-           let uiImage = UIImage(data: data) {
-            editCoverImage = uiImage
-        } else {
-            fetchCoverFromGitHub()
-        }
-
         isEditing = true
     }
 
@@ -452,60 +443,55 @@ struct BookDetailView: View {
 
     // MARK: - Change Detection
 
-    private func computeChanges() -> (needsWorkflow: Bool, fields: [String]) {
-        var siteFields: [String] = []
-        var workflowFields: [String] = []
+    private func computeChanges() {
+        var fields: [String] = []
 
-        if editTitle != origTitle { workflowFields.append("Title") }
-        if editAuthor != origAuthor { workflowFields.append("Author") }
-        if manuscriptChanged { workflowFields.append("Manuscript") }
-        if coverChanged { workflowFields.append("Cover Image") }
-
-        if editSeries != origSeries { siteFields.append("Series") }
-        if editSeriesOrder != origSeriesOrder { siteFields.append("Series Order") }
-        if editReleaseDate != origReleaseDate { siteFields.append("Release Date") }
-        if editIsLatestRelease != origIsLatestRelease { siteFields.append("Latest Release") }
-        if editIsNovella != origIsNovella { siteFields.append("Novella") }
-        if editShortDescription != origShortDescription { siteFields.append("Short Description") }
-        if editDescriptionText != origDescriptionText { siteFields.append("Description") }
-        if editPriceLabel != origPriceLabel { siteFields.append("Price") }
-        if editIsFree != origIsFree { siteFields.append("Free/Paid") }
-        if editPrimaryCheckoutURL != origPrimaryCheckoutURL { siteFields.append("Checkout URL") }
-        if editCheckoutProviderLabel != origCheckoutProviderLabel { siteFields.append("Checkout Provider") }
-        if editTropes != origTropes { siteFields.append("Tropes") }
-        if editThemes != origThemes { siteFields.append("Themes") }
-        if editContentNotes != origContentNotes { siteFields.append("Content Notes") }
-        if editForFansOf != origForFansOf { siteFields.append("For Fans Of") }
-        if editTickerQuotes != origTickerQuotes { siteFields.append("Ticker Quotes") }
-
-        let allChanged = workflowFields + siteFields
-        let needs = !workflowFields.isEmpty
-        return (needs, allChanged)
-    }
-
-    // MARK: - Save
-
-    private func performSave() async {
-        guard let settings = allSettings.first, !settings.githubPAT.isEmpty else {
-            saveError = "GitHub credentials not configured."
-            showingError = true
-            return
-        }
-
-        let (needsWF, fields) = computeChanges()
-        guard !fields.isEmpty else {
-            saveError = "No changes detected."
-            showingError = true
-            return
-        }
+        if editTitle != origTitle { fields.append("Title") }
+        if editAuthor != origAuthor { fields.append("Author") }
+        if editSeries != origSeries { fields.append("Series") }
+        if editSeriesOrder != origSeriesOrder { fields.append("Series Order") }
+        if editReleaseDate != origReleaseDate { fields.append("Release Date") }
+        if editIsLatestRelease != origIsLatestRelease { fields.append("Latest Release") }
+        if editIsNovella != origIsNovella { fields.append("Novella") }
+        if editShortDescription != origShortDescription { fields.append("Short Description") }
+        if editDescriptionText != origDescriptionText { fields.append("Description") }
+        if editPriceLabel != origPriceLabel { fields.append("Price") }
+        if editIsFree != origIsFree { fields.append("Free/Paid") }
+        if editPrimaryCheckoutURL != origPrimaryCheckoutURL { fields.append("Checkout URL") }
+        if editCheckoutProviderLabel != origCheckoutProviderLabel { fields.append("Checkout Provider") }
+        if editTropes != origTropes { fields.append("Tropes") }
+        if editThemes != origThemes { fields.append("Themes") }
+        if editContentNotes != origContentNotes { fields.append("Content Notes") }
+        if editForFansOf != origForFansOf { fields.append("For Fans Of") }
+        if editTickerQuotes != origTickerQuotes { fields.append("Ticker Quotes") }
+        if manuscriptChanged { fields.append("Manuscript") }
+        if coverChanged { fields.append("Cover Image") }
 
         changedFields = fields
-        needsWorkflow = needsWF
-        showingSaveConfirmation = true
     }
 
-    private func executeSave() async {
-        guard !isSaving else { return }
+    // MARK: - Save Draft Locally
+
+    private func saveDraftLocally() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            let bookJSON = buildBookJSON()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let coverData = editCoverImage?.jpegData(compressionQuality: 0.9)
+            try fileManager.saveDraft(book: bookJSON, manuscript: editManuscriptText.isEmpty ? nil : editManuscriptText, coverData: coverData)
+            print("[BookDetailView] Draft saved locally for \(bookJSON.slug)")
+        } catch {
+            saveError = "Failed to save draft: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+
+    // MARK: - Publish to GitHub (atomic commit via Git Data API)
+
+    private func publishToGitHub() async {
         guard let settings = allSettings.first, !settings.githubPAT.isEmpty else {
             saveError = "GitHub credentials not configured."
             showingError = true
@@ -515,130 +501,92 @@ struct BookDetailView: View {
         isSaving = true
         defer { isSaving = false }
 
-        let github = GitHubService()
+        let git = GitService()
+        let slug = bookJSON.slug
+        var files: [(path: String, data: Data)] = []
 
         do {
-            // Step 1: Push manuscript if changed
-            if manuscriptChanged, !editManuscriptText.isEmpty {
-                print("[Save] Step 1: Pushing manuscript...")
-                let manuscriptData = editManuscriptText.data(using: .utf8)!
-                try await github.pushFile(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/manuscripts/\(book.slug).md",
-                    content: manuscriptData,
-                    message: "Update manuscript for \(book.title)",
-                    pat: settings.githubPAT
-                )
-                print("[Save] Step 1: Manuscript pushed OK")
-            }
-
-            // Step 2: Push cover if changed
-            if coverChanged, let cover = editCoverImage,
-               let jpegData = cover.jpegData(compressionQuality: 0.9) {
-                print("[Save] Step 2: Pushing cover...")
-                try await github.pushFile(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/public/assets/img/covers/\(book.slug)-cover.jpg",
-                    content: jpegData,
-                    message: "Update cover for \(book.title)",
-                    pat: settings.githubPAT
-                )
-                print("[Save] Step 2: Cover pushed OK")
-            }
-
-            // Step 3: Build and validate book JSON
-            print("[Save] Step 3: Building book JSON...")
-            applyEditsToBook()
-            let bookJSON = book.toBookJSON()
+            // Build the updated book JSON
+            let updatedBook = buildBookJSON()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let jsonData = try encoder.encode(bookJSON)
-            print("[Save] Step 3: JSON encoded OK (\(jsonData.count) bytes)")
+            let bookData = try encoder.encode(updatedBook)
+            files.append((path: "\(bookPathPrefix)content/books/\(slug).json", data: bookData))
+            print("[Publish] Book JSON ready (\(bookData.count) bytes)")
 
-            // Step 4: Push book JSON
-            print("[Save] Step 4: Pushing book JSON...")
-            try await github.pushFile(
+            // Add manuscript if changed
+            if manuscriptChanged, !editManuscriptText.isEmpty,
+               let manuscriptData = editManuscriptText.data(using: .utf8) {
+                files.append((path: "\(bookPathPrefix)manuscripts/\(slug).md", data: manuscriptData))
+                print("[Publish] Manuscript ready (\(manuscriptData.count) bytes)")
+            }
+
+            // Add cover if changed
+            if coverChanged, let cover = editCoverImage,
+               let jpegData = cover.jpegData(compressionQuality: 0.9) {
+                files.append((path: "\(bookPathPrefix)public/assets/img/covers/\(slug)-cover.jpg", data: jpegData))
+                print("[Publish] Cover ready (\(jpegData.count) bytes)")
+            }
+
+            // Atomic commit
+            let commitSHA = try await git.commitChanges(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/content/books/\(book.slug).json",
-                content: jsonData,
-                message: "Update \(book.title)",
+                branch: "main",
+                message: "Update \(updatedBook.title)",
+                files: files,
                 pat: settings.githubPAT
             )
-            print("[Save] Step 4: Book JSON pushed OK")
 
-            // Step 5: Save locally
-            print("[Save] Step 5: Saving locally...")
-            if manuscriptChanged, !editManuscriptText.isEmpty {
-                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                let manuscriptURL = docs.appendingPathComponent("\(book.slug).md")
-                if let data = editManuscriptText.data(using: .utf8) {
-                    try? data.write(to: manuscriptURL)
-                    book.manuscriptPath = manuscriptURL.path
-                }
-            }
-            if coverChanged, let cover = editCoverImage {
-                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                let coverURL = docs.appendingPathComponent("\(book.slug)-cover.jpg")
-                if let jpegData = cover.jpegData(compressionQuality: 0.9) {
-                    try? jpegData.write(to: coverURL)
-                    book.coverImagePath = coverURL.path
-                }
-            }
-
-            try modelContext.save()
-            print("[Save] Step 5: Local save OK")
-
-            // Step 6: Monitor workflow if content changed
-            if needsWorkflow {
-                print("[Save] Step 6: Monitoring workflow...")
-                let conversion = ConversionService()
-                _ = try await conversion.triggerAndMonitorConversion(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    slug: book.slug,
-                    pat: settings.githubPAT,
-                    onStatus: { _ in }
-                )
-                print("[Save] Step 6: Workflow complete")
-            }
-
-            // Success
-            print("[Save] DONE - all steps OK")
-            withAnimation { saved = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                withAnimation { saved = false }
-            }
-            isEditing = false
+            print("[Publish] Committed: \(commitSHA.prefix(8))")
+            publishSuccess = true
 
         } catch {
-            print("[Save] FAILED at: \(error)")
+            print("[Publish] FAILED: \(error)")
             saveError = "\(error)"
             showingError = true
         }
     }
 
-    private func applyEditsToBook() {
-        book.title = editTitle
-        book.author = editAuthor
-        book.series = editSeries
-        book.seriesOrder = editSeriesOrder
-        book.releaseDate = editReleaseDate
-        book.shortDescription = editShortDescription
-        book.descriptionText = editDescriptionText
-        book.priceLabel = editPriceLabel
-        book.isFree = editIsFree
-        book.isLatestRelease = editIsLatestRelease
-        book.isNovella = editIsNovella
-        book.primaryCheckoutURL = editPrimaryCheckoutURL
-        book.checkoutProviderLabel = editCheckoutProviderLabel
-        book.tropes = editTropes
-        book.themes = editThemes
-        book.forFansOf = editForFansOf
-        book.contentNotes = editContentNotes
-        book.tickerQuotes = editTickerQuotes
+    // MARK: - Build BookJSON from edits
+
+    private func buildBookJSON() -> BookJSON {
+        BookJSON(
+            slug: bookJSON.slug,
+            title: editTitle,
+            author: editAuthor,
+            catalogStatus: bookJSON.catalogStatus,
+            seriesType: editSeriesOrder.isEmpty ? "standalone" : "series",
+            series: editSeries,
+            seriesOrder: editSeriesOrder.isEmpty ? nil : editSeriesOrder,
+            isNovella: editIsNovella,
+            isBundle: bookJSON.isBundle,
+            bundleMembers: bookJSON.bundleMembers,
+            releaseDate: editReleaseDate,
+            wordCount: bookJSON.wordCount,
+            isLatestRelease: editIsLatestRelease,
+            tropes: editTropes,
+            themes: editThemes,
+            forFansOf: editForFansOf,
+            tickerQuotes: editTickerQuotes,
+            formats: bookJSON.formats,
+            isFree: editIsFree,
+            primaryCheckoutURL: editPrimaryCheckoutURL,
+            backupCheckoutURL: bookJSON.backupCheckoutURL,
+            checkoutProviderLabel: editCheckoutProviderLabel,
+            backupCheckoutProviderLabel: bookJSON.backupCheckoutProviderLabel,
+            priceLabel: editPriceLabel,
+            formatsIncluded: bookJSON.formatsIncluded,
+            sampleEPUBURL: bookJSON.sampleEPUBURL,
+            samplePDFURL: bookJSON.samplePDFURL,
+            sampleDOCXURL: bookJSON.sampleDOCXURL,
+            coverImage: bookJSON.coverImage,
+            shortDescription: editShortDescription,
+            description: editDescriptionText,
+            contentNotes: editContentNotes.joined(separator: ", "),
+            status: bookJSON.status,
+            sourceMarkdown: bookJSON.sourceMarkdown
+        )
     }
 
     // MARK: - Fetch from GitHub
@@ -650,34 +598,12 @@ struct BookDetailView: View {
             let text = try await github.getFileAsString(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/manuscripts/\(book.slug).md",
+                path: "\(bookPathPrefix)manuscripts/\(bookJSON.slug).md",
                 pat: settings.githubPAT
             )
             editManuscriptText = text
         } catch {
             print("Could not fetch manuscript: \(error)")
-        }
-    }
-
-    private func fetchCoverFromGitHub() {
-        guard let settings = allSettings.first, !settings.githubPAT.isEmpty else { return }
-        let github = GitHubService()
-        Task {
-            do {
-                let data = try await github.getFileContent(
-                    owner: settings.githubOwner,
-                    repo: settings.githubRepo,
-                    path: "dove-harper-site/public/assets/img/covers/\(book.slug)-cover.jpg",
-                    pat: settings.githubPAT
-                )
-                if let uiImage = UIImage(data: data) {
-                    await MainActor.run {
-                        editCoverImage = uiImage
-                    }
-                }
-            } catch {
-                print("Could not fetch cover: \(error)")
-            }
         }
     }
 
@@ -700,32 +626,37 @@ struct BookDetailView: View {
     // MARK: - Delete
 
     private func deleteBook() async {
-        guard let settings = allSettings.first else { return }
-        guard !settings.githubPAT.isEmpty else { return }
+        guard let settings = allSettings.first, !settings.githubPAT.isEmpty else { return }
 
         let github = GitHubService()
 
         do {
+            // Delete JSON
             try await github.deleteFile(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/content/books/\(book.slug).json",
-                message: "Delete \(book.title)",
+                path: "\(bookPathPrefix)content/books/\(bookJSON.slug).json",
+                message: "Delete \(bookJSON.title)",
                 pat: settings.githubPAT
             )
 
+            // Delete cover (best effort)
             try? await github.deleteFile(
                 owner: settings.githubOwner,
                 repo: settings.githubRepo,
-                path: "dove-harper-site/public/assets/img/covers/\(book.slug)-cover.jpg",
-                message: "Delete cover for \(book.title)",
+                path: "\(bookPathPrefix)public/assets/img/covers/\(bookJSON.slug)-cover.jpg",
+                message: "Delete cover for \(bookJSON.title)",
                 pat: settings.githubPAT
             )
 
-            modelContext.delete(book)
-            try modelContext.save()
+            // Delete local draft if exists
+            try? fileManager.deleteDraft(slug: bookJSON.slug)
+
+            dismiss()
         } catch {
             print("Delete failed: \(error)")
+            saveError = "\(error)"
+            showingError = true
         }
     }
 }

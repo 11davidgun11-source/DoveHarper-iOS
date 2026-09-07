@@ -3,7 +3,7 @@ import Foundation
 class GitHubService {
     private let baseURL = "https://api.github.com"
 
-    private func makeRequest(
+    func makeRequest(
         path: String,
         method: String = "GET",
         body: Data? = nil,
@@ -32,98 +32,43 @@ class GitHubService {
         return (data, httpResponse)
     }
 
+    // MARK: - Fetch Book List
+
     func listBooks(owner: String, repo: String, pat: String) async throws -> [BookJSON] {
         let path = "/repos/\(owner)/\(repo)/contents/dove-harper-site/content/books"
         let (data, response) = try await makeRequest(path: path, pat: pat)
 
         guard response.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown"
-            print("[GitHubService] listBooks failed: \(response.statusCode) - \(body.prefix(200))")
             throw GitHubError.apiError("Failed to list books: \(response.statusCode)")
         }
 
         let contents = try JSONDecoder().decode([GitHubContent].self, from: data)
-        var books: [BookJSON] = []
-        var errors: [String] = []
-
         let jsonFiles = contents.filter { $0.name.hasSuffix(".json") && !$0.name.hasPrefix("_") }
-        print("[GitHubService] Found \(jsonFiles.count) book files")
 
         if jsonFiles.isEmpty {
             throw GitHubError.apiError("No .json book files found in dove-harper-site/content/books/")
         }
 
+        var books: [BookJSON] = []
+        var errors: [String] = []
+
         for file in jsonFiles {
-            let bookPath = "/repos/\(owner)/\(repo)/contents/dove-harper-site/content/books/\(file.name)"
             do {
-                let (bookData, bookResp) = try await makeRequest(path: bookPath, pat: pat)
-                guard bookResp.statusCode == 200 else {
-                    errors.append("\(file.name): HTTP \(bookResp.statusCode)")
-                    continue
-                }
-
-                var decoded: Data?
-
-                guard let json = try? JSONSerialization.jsonObject(with: bookData) as? [String: Any] else {
-                    errors.append("\(file.name): invalid JSON response")
-                    continue
-                }
-
-                let sha = json["sha"] as? String
-
-                // Method 1: base64 content field
-                if let encoded = json["content"] as? String, !encoded.isEmpty {
-                    decoded = Data(base64Encoded: encoded)
-                }
-
-                // Method 2: download_url
-                if decoded == nil, let downloadURLString = json["download_url"] as? String,
-                   let downloadURL = URL(string: downloadURLString) {
-                    let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
-                    if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
-                        decoded = dlData
-                    }
-                }
-
-                // Method 3: git blob API
-                if decoded == nil, let sha = sha {
-                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
-                    let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
-                    if blobResp.statusCode == 200,
-                       let blobJson = try? JSONSerialization.jsonObject(with: blobData) as? [String: Any],
-                       let blobContent = blobJson["content"] as? String {
-                        decoded = Data(base64Encoded: blobContent)
-                    }
-                }
-
-                guard let jsonData = decoded else {
-                    // Dump raw response for debugging
-                    let raw = String(data: bookData, encoding: .utf8) ?? "non-utf8"
-                    let preview = raw.count > 400 ? String(raw.prefix(400)) + "..." : raw
-                    errors.append("\(file.name): all decode methods failed. Raw: \(preview)")
-                    continue
-                }
-
-                do {
-                    let book = try JSONDecoder().decode(BookJSON.self, from: jsonData)
-                    books.append(book)
-                    print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
-                } catch {
-                    let raw = String(data: jsonData, encoding: .utf8) ?? "non-utf8"
-                    let preview = raw.count > 400 ? String(raw.prefix(400)) + "..." : raw
-                    errors.append("\(file.name): BookJSON decode error: \(error.localizedDescription). Raw: \(preview)")
-                }
+                let book = try await getBook(owner: owner, repo: repo, slug: file.name.replacingOccurrences(of: ".json", with: ""), pat: pat)
+                books.append(book)
             } catch {
-                errors.append("\(file.name): fetch error: \(error.localizedDescription)")
+                errors.append("\(file.name): \(error.localizedDescription)")
             }
         }
 
         if books.isEmpty && !errors.isEmpty {
-            throw GitHubError.apiError("Decode failed for all books:\n" + errors.joined(separator: "\n"))
+            throw GitHubError.apiError("Failed to load any books:\n" + errors.joined(separator: "\n"))
         }
 
         return books
     }
+
+    // MARK: - Fetch Single Book
 
     func getBook(owner: String, repo: String, slug: String, pat: String) async throws -> BookJSON {
         let path = "/repos/\(owner)/\(repo)/contents/dove-harper-site/content/books/\(slug).json"
@@ -142,6 +87,8 @@ class GitHubService {
         let (bookData, _) = try await URLSession.shared.data(from: url)
         return try JSONDecoder().decode(BookJSON.self, from: bookData)
     }
+
+    // MARK: - Fetch File Content (manuscript, cover, etc.)
 
     func getFileContent(
         owner: String,
@@ -204,95 +151,7 @@ class GitHubService {
         return text
     }
 
-    func getBookSHA(owner: String, repo: String, path: String, pat: String) async throws -> String? {
-        let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
-        let (data, response) = try await makeRequest(path: urlPath, pat: pat)
-
-        if response.statusCode == 200 {
-            let content = try JSONDecoder().decode(GitHubContent.self, from: data)
-            return content.sha
-        }
-        return nil
-    }
-
-    func pushFile(
-        owner: String,
-        repo: String,
-        path: String,
-        content: Data,
-        message: String,
-        pat: String
-    ) async throws -> String {
-        let base64Content = content.base64EncodedString()
-        let sha = try? await getBookSHA(owner: owner, repo: repo, path: path, pat: pat)
-
-        var update = GitHubFileUpdate(
-            message: message,
-            content: base64Content,
-            sha: sha,
-            branch: "main"
-        )
-
-        let encoder = JSONEncoder()
-        let body = try encoder.encode(update)
-        let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
-        let (data, response) = try await makeRequest(path: urlPath, method: "PUT", body: body, pat: pat)
-
-        guard response.statusCode == 200 || response.statusCode == 201 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw GitHubError.apiError("Failed to push \(path): \(response.statusCode) - \(errorBody)")
-        }
-
-        // GitHub PUT returns {"content": {...}, "commit": {...}}, not flat GitHubContent
-        struct PushResponse: Codable {
-            let content: GitHubContent?
-            let commit: PushCommit?
-        }
-        struct PushCommit: Codable {
-            let sha: String
-        }
-
-        if let result = try? JSONDecoder().decode(PushResponse.self, from: data),
-           let sha = result.content?.sha ?? result.commit?.sha {
-            print("[GitHubService] Push OK: \(path) -> sha \(sha.prefix(8))")
-            return sha
-        }
-
-        // Fallback: try flat decode
-        if let result = try? JSONDecoder().decode(GitHubContent.self, from: data) {
-            print("[GitHubService] Push OK (flat): \(path) -> sha \(result.sha.prefix(8))")
-            return result.sha
-        }
-
-        // Last resort: extract sha from raw JSON
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let contentDict = json["content"] as? [String: Any], let sha = contentDict["sha"] as? String {
-                print("[GitHubService] Push OK (raw): \(path) -> sha \(sha.prefix(8))")
-                return sha
-            }
-            if let commitDict = json["commit"] as? [String: Any], let sha = commitDict["sha"] as? String {
-                print("[GitHubService] Push OK (commit sha): \(path) -> sha \(sha.prefix(8))")
-                return sha
-            }
-        }
-
-        print("[GitHubService] Push succeeded but could not parse SHA for \(path)")
-        return "unknown"
-    }
-
-    func pushString(
-        owner: String,
-        repo: String,
-        path: String,
-        content: String,
-        message: String,
-        pat: String
-    ) async throws -> String {
-        guard let data = content.data(using: .utf8) else {
-            throw GitHubError.encodingError
-        }
-        return try await pushFile(owner: owner, repo: repo, path: path, content: data, message: message, pat: pat)
-    }
+    // MARK: - Delete File (for deleting books)
 
     func deleteFile(
         owner: String,
@@ -301,24 +160,30 @@ class GitHubService {
         message: String,
         pat: String
     ) async throws {
-        let sha = try await getBookSHA(owner: owner, repo: repo, path: path, pat: pat)
-        guard let sha = sha else { return }
+        // Get current SHA via Contents API
+        let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
+        let (data, response) = try await makeRequest(path: urlPath, pat: pat)
+        guard response.statusCode == 200 else { return }
 
-        struct DeleteUpdate: Codable {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sha = json["sha"] as? String else { return }
+
+        struct DeleteBody: Codable {
             let message: String
             let sha: String
             let branch: String
         }
 
-        let update = DeleteUpdate(message: message, sha: sha, branch: "main")
-        let body = try JSONEncoder().encode(update)
-        let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
-        let (_, response) = try await makeRequest(path: urlPath, method: "DELETE", body: body, pat: pat)
+        let body = DeleteBody(message: message, sha: sha, branch: "main")
+        let bodyData = try JSONEncoder().encode(body)
+        let (_, delResp) = try await makeRequest(path: urlPath, method: "DELETE", body: bodyData, pat: pat)
 
-        guard response.statusCode == 200 else {
-            throw GitHubError.apiError("Failed to delete \(path): \(response.statusCode)")
+        guard delResp.statusCode == 200 else {
+            throw GitHubError.apiError("Failed to delete \(path): \(delResp.statusCode)")
         }
     }
+
+    // MARK: - Workflow Monitoring
 
     func getLatestWorkflowRun(owner: String, repo: String, pat: String) async throws -> GitHubWorkflowRun? {
         let path = "/repos/\(owner)/\(repo)/actions/runs?per_page=5&status=in_progress"
