@@ -352,6 +352,16 @@ struct GitHubContent: Codable {
     let downloadURL: String?
     let content: String?
     let encoding: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, path, sha, size, content, encoding
+        case downloadURL = "download_url"
+    }
+}
+
+struct GitHubBlob: Codable {
+    let content: String
+    let encoding: String
 }
 
 struct GitHubFileUpdate: Codable {

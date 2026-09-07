@@ -4,31 +4,22 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
-    @State private var settings: AppSettings
+    @State private var pat = ""
+    @State private var owner = ""
+    @State private var repo = ""
+    @State private var defaultAuthor = ""
+    @State private var timezone = ""
     @State private var showingAutocorrectRules = false
     @State private var newRulePattern = ""
     @State private var newRuleReplacement = ""
     @State private var saved = false
+    @State private var rules: [String: String] = [:]
 
     private let timezones = [
-        "UTC",
-        "America/New_York",
-        "America/Chicago",
-        "America/Denver",
-        "America/Los_Angeles",
-        "Europe/London",
-        "Europe/Paris",
-        "Europe/Berlin",
-        "Europe/Lisbon",
-        "Asia/Tokyo",
-        "Asia/Shanghai",
-        "Australia/Sydney"
+        "UTC", "America/New_York", "America/Chicago", "America/Denver",
+        "America/Los_Angeles", "Europe/London", "Europe/Paris", "Europe/Berlin",
+        "Europe/Lisbon", "Asia/Tokyo", "Asia/Shanghai", "Australia/Sydney"
     ]
-
-    init() {
-        let settings = AppSettings()
-        _settings = State(initialValue: settings)
-    }
 
     var body: some View {
         NavigationStack {
@@ -40,21 +31,21 @@ struct SettingsView: View {
                 }
 
                 Section("GitHub") {
-                    TextField("Personal Access Token", text: $settings.githubPAT)
+                    TextField("Personal Access Token", text: $pat)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
                         .textContentType(.password)
-                    TextField("Owner (e.g. doveharperauthor)", text: $settings.githubOwner)
+                    TextField("Owner", text: $owner)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
-                    TextField("Repository (e.g. DoveHarper-site)", text: $settings.githubRepo)
+                    TextField("Repository", text: $repo)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
                 }
 
                 Section {
-                    TextField("Default Author Name", text: $settings.defaultAuthor)
-                    Picker("Timezone", selection: $settings.timezone) {
+                    TextField("Default Author Name", text: $defaultAuthor)
+                    Picker("Timezone", selection: $timezone) {
                         ForEach(timezones, id: \.self) { tz in
                             Text(tz.replacingOccurrences(of: "/", with: " — ")).tag(tz)
                         }
@@ -74,7 +65,7 @@ struct SettingsView: View {
                         HStack {
                             Text("Manage Rules")
                             Spacer()
-                            Text("\(settings.autocorrectRules.count) rules")
+                            Text("\(rules.count) rules")
                                 .foregroundStyle(.secondary)
                             Image(systemName: "chevron.right")
                         }
@@ -84,15 +75,10 @@ struct SettingsView: View {
                 Section {
                     Button {
                         saveSettings()
-                        withAnimation {
-                            saved = true
-                        }
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
+                        withAnimation { saved = true }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation {
-                                saved = false
-                            }
+                            withAnimation { saved = false }
                         }
                     } label: {
                         HStack {
@@ -115,28 +101,26 @@ struct SettingsView: View {
             .sheet(isPresented: $showingAutocorrectRules) {
                 NavigationStack {
                     List {
-                        ForEach(Array(settings.autocorrectRules.sorted(by: { $0.key < $1.key })), id: \.key) { key, value in
+                        ForEach(Array(rules.sorted(by: { $0.key < $1.key })), id: \.key) { key, value in
                             HStack {
-                                Text(key)
-                                    .foregroundStyle(.secondary)
+                                Text(key).foregroundStyle(.secondary)
                                 Image(systemName: "arrow.right")
                                 Text(value)
                             }
                         }
                         .onDelete { indexSet in
-                            let sorted = settings.autocorrectRules.sorted(by: { $0.key < $1.key })
+                            let sorted = rules.sorted(by: { $0.key < $1.key })
                             for index in indexSet {
-                                let key = sorted[index].key
-                                settings.autocorrectRules.removeValue(forKey: key)
+                                rules.removeValue(forKey: sorted[index].key)
                             }
                         }
 
                         Section("Add Rule") {
-                            TextField("Pattern (e.g. explicit content)", text: $newRulePattern)
-                            TextField("Replacement (e.g. Explicit Content)", text: $newRuleReplacement)
+                            TextField("Pattern", text: $newRulePattern)
+                            TextField("Replacement", text: $newRuleReplacement)
                             Button("Add Rule") {
                                 if !newRulePattern.isEmpty && !newRuleReplacement.isEmpty {
-                                    settings.autocorrectRules[newRulePattern.lowercased()] = newRuleReplacement
+                                    rules[newRulePattern.lowercased()] = newRuleReplacement
                                     newRulePattern = ""
                                     newRuleReplacement = ""
                                 }
@@ -160,22 +144,38 @@ struct SettingsView: View {
     private func loadSettings() {
         let descriptor = FetchDescriptor<AppSettings>()
         if let existing = try? modelContext.fetch(descriptor).first {
-            settings = existing
+            pat = existing.githubPAT
+            owner = existing.githubOwner
+            repo = existing.githubRepo
+            defaultAuthor = existing.defaultAuthor
+            timezone = existing.timezone
+            rules = existing.autocorrectRules
         }
     }
 
     private func saveSettings() {
         let descriptor = FetchDescriptor<AppSettings>()
         if let existing = try? modelContext.fetch(descriptor).first {
-            existing.githubPAT = settings.githubPAT
-            existing.githubOwner = settings.githubOwner
-            existing.githubRepo = settings.githubRepo
-            existing.defaultAuthor = settings.defaultAuthor
-            existing.timezone = settings.timezone
-            existing.autocorrectRules = settings.autocorrectRules
+            existing.githubPAT = pat
+            existing.githubOwner = owner
+            existing.githubRepo = repo
+            existing.defaultAuthor = defaultAuthor
+            existing.timezone = timezone
+            existing.autocorrectRules = rules
         } else {
-            modelContext.insert(settings)
+            let s = AppSettings()
+            s.githubPAT = pat
+            s.githubOwner = owner
+            s.githubRepo = repo
+            s.defaultAuthor = defaultAuthor
+            s.timezone = timezone
+            s.autocorrectRules = rules
+            modelContext.insert(s)
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[Settings] Save failed: \(error)")
+        }
     }
 }
