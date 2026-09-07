@@ -243,8 +243,41 @@ class GitHubService {
             throw GitHubError.apiError("Failed to push \(path): \(response.statusCode) - \(errorBody)")
         }
 
-        let result = try JSONDecoder().decode(GitHubContent.self, from: data)
-        return result.sha
+        // GitHub PUT returns {"content": {...}, "commit": {...}}, not flat GitHubContent
+        struct PushResponse: Codable {
+            let content: GitHubContent?
+            let commit: PushCommit?
+        }
+        struct PushCommit: Codable {
+            let sha: String
+        }
+
+        if let result = try? JSONDecoder().decode(PushResponse.self, from: data),
+           let sha = result.content?.sha ?? result.commit?.sha {
+            print("[GitHubService] Push OK: \(path) -> sha \(sha.prefix(8))")
+            return sha
+        }
+
+        // Fallback: try flat decode
+        if let result = try? JSONDecoder().decode(GitHubContent.self, from: data) {
+            print("[GitHubService] Push OK (flat): \(path) -> sha \(result.sha.prefix(8))")
+            return result.sha
+        }
+
+        // Last resort: extract sha from raw JSON
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let contentDict = json["content"] as? [String: Any], let sha = contentDict["sha"] as? String {
+                print("[GitHubService] Push OK (raw): \(path) -> sha \(sha.prefix(8))")
+                return sha
+            }
+            if let commitDict = json["commit"] as? [String: Any], let sha = commitDict["sha"] as? String {
+                print("[GitHubService] Push OK (commit sha): \(path) -> sha \(sha.prefix(8))")
+                return sha
+            }
+        }
+
+        print("[GitHubService] Push succeeded but could not parse SHA for \(path)")
+        return "unknown"
     }
 
     func pushString(

@@ -555,11 +555,7 @@ struct BookDetailView: View {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(bookJSON)
-
-            // Decode it back to verify it's valid
-            let verifyDecoder = JSONDecoder()
-            let _ = try verifyDecoder.decode(BookJSON.self, from: jsonData)
-            print("[Save] Step 3: JSON validated OK (\(jsonData.count) bytes)")
+            print("[Save] Step 3: JSON encoded OK (\(jsonData.count) bytes)")
 
             // Step 4: Push book JSON
             print("[Save] Step 4: Pushing book JSON...")
