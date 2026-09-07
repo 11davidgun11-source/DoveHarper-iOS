@@ -592,8 +592,10 @@ struct BookDetailView: View {
             }
 
             // Success
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
+            await MainActor.run {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+            }
             withAnimation { saved = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation { saved = false }
