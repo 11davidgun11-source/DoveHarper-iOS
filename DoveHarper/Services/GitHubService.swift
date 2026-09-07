@@ -17,7 +17,6 @@ class GitHubService {
         request.httpMethod = method
         request.setValue("Bearer \(pat)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("DoveHarper-iOS/1.0", forHTTPHeaderField: "X-GitHub-Api-Version")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
 
         if let body = body {
@@ -59,22 +58,33 @@ class GitHubService {
                 }
                 let fileContent = try JSONDecoder().decode(GitHubContent.self, from: bookData)
                 if let encoded = fileContent.content,
-                   let decoded = Data(base64Encoded: encoded),
-                   let book = try? JSONDecoder().decode(BookJSON.self, from: decoded) {
-                    books.append(book)
-                    print("[GitHubService] Loaded: \(book.title)")
+                   let decoded = Data(base64Encoded: encoded) {
+                    do {
+                        let book = try JSONDecoder().decode(BookJSON.self, from: decoded)
+                        books.append(book)
+                        print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
+                    } catch {
+                        print("[GitHubService] DECODE FAILED for \(file.name): \(error)")
+                        if let raw = String(data: decoded, encoding: .utf8) {
+                            print("[GitHubService] Raw JSON (first 500): \(raw.prefix(500))")
+                        }
+                    }
                 } else {
-                    print("[GitHubService] No base64 content for \(file.name), trying git blob")
+                    print("[GitHubService] No base64 content for \(file.name) (content=\(fileContent.content == nil ? "nil" : "exists")), trying git blob")
                     let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(fileContent.sha)"
                     let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
                     if blobResp.statusCode == 200,
                        let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData),
-                       let decoded = Data(base64Encoded: blob.content),
-                       let book = try? JSONDecoder().decode(BookJSON.self, from: decoded) {
-                        books.append(book)
-                        print("[GitHubService] Loaded via blob: \(book.title)")
+                       let decoded = Data(base64Encoded: blob.content) {
+                        do {
+                            let book = try JSONDecoder().decode(BookJSON.self, from: decoded)
+                            books.append(book)
+                            print("[GitHubService] Loaded via blob: \(book.title) [\(book.status)]")
+                        } catch {
+                            print("[GitHubService] Blob DECODE FAILED for \(file.name): \(error)")
+                        }
                     } else {
-                        print("[GitHubService] Failed to decode \(file.name)")
+                        print("[GitHubService] Failed to load \(file.name) via blob")
                     }
                 }
             } catch {

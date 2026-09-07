@@ -55,6 +55,10 @@ struct BookListView: View {
                                     Text("Synced \(lastSynced.formatted(.relative(presentation: .named)))")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("\(publishedBooks.count) published, \(drafts.count) drafts")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -164,23 +168,29 @@ struct BookListView: View {
 
             print("[BookListView] Fetched \(books.count) books from GitHub")
 
+            if books.isEmpty {
+                errorMessage = "Found 0 books. Check GitHub repo path: \(settings.githubOwner)/\(settings.githubRepo)"
+                return
+            }
+
             // Clear all existing books to remove stale drafts
             let allBooksDescriptor = FetchDescriptor<BookEntity>()
             let allExisting = try modelContext.fetch(allBooksDescriptor)
             for old in allExisting {
                 modelContext.delete(old)
             }
+            print("[BookListView] Cleared \(allExisting.count) old books")
 
             // Insert fresh data from GitHub
             for bookJSON in books {
                 let entity = createEntity(from: bookJSON)
                 modelContext.insert(entity)
-                print("[BookListView] Inserted book: \(bookJSON.title)")
+                print("[BookListView] Inserted: \(bookJSON.title) (draft=\(entity.isLocalDraft), status=\(entity.status))")
             }
 
             try modelContext.save()
             lastSynced = Date()
-            print("[BookListView] Save successful, lastSynced set")
+            print("[BookListView] Saved \(books.count) books, lastSynced set")
         } catch {
             print("[BookListView] Error: \(error.localizedDescription)")
             errorMessage = "Failed to load books: \(error.localizedDescription)"
