@@ -153,10 +153,13 @@ struct BookDetailView: View {
         } message: {
             Text("Changes pushed to GitHub. The site will update shortly.")
         }
-        .onChange(of: selectedCoverImage) { _, newValue in
-            if let image = newValue {
-                editCoverImage = image
-                coverChanged = true
+        .onChange(of: selectedCoverItem) { _, newItem in
+            Task {
+                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    editCoverImage = uiImage
+                    coverChanged = true
+                }
             }
         }
     }

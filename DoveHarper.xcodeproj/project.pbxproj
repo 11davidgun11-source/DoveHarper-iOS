@@ -26,6 +26,8 @@
 		AA000017 /* DismissKeyboardOnTap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000019; };
 		AA000018 /* ConnectionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000020; };
 		AA000019 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000021; };
+		AA000020 /* BookFileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000022; };
+		AA000021 /* GitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000023; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +52,8 @@
 		AB000019 /* DismissKeyboardOnTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissKeyboardOnTap.swift; sourceTree = "<group>"; };
 		AB000020 /* ConnectionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionChecker.swift; sourceTree = "<group>"; };
 		AB000021 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
+		AB000022 /* BookFileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookFileManager.swift; sourceTree = "<group>"; };
+		AB000023 /* GitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +110,8 @@
 			isa = PBXGroup;
 			children = (
 				AB000003 /* GitHubService.swift */,
+				AB000022 /* BookFileManager.swift */,
+				AB000023 /* GitService.swift */,
 				AB000004 /* ShopifyService.swift */,
 				AB000005 /* TextCorrector.swift */,
 				AB000006 /* ConversionService.swift */,
@@ -210,6 +216,8 @@
 				AA000001 /* DoveHarperApp.swift in Sources */,
 				AA000002 /* Models.swift in Sources */,
 				AA000003 /* GitHubService.swift in Sources */,
+				AA000020 /* BookFileManager.swift in Sources */,
+				AA000021 /* GitService.swift in Sources */,
 				AA000004 /* ShopifyService.swift in Sources */,
 				AA000005 /* TextCorrector.swift in Sources */,
 				AA000006 /* ConversionService.swift in Sources */,
