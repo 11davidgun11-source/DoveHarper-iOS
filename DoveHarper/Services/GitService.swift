@@ -88,7 +88,10 @@ class GitService {
             throw GitError.apiError("Failed to create tree: \(response.statusCode) - \(errorBody)")
         }
 
-        let tree = try JSONDecoder().decode(GitTree.self, from: data)
+        print("[GitService] Tree response: \(String(data: data, encoding: .utf8) ?? "nil")")
+        let decoder = JSONDecoder()
+        let tree = try decoder.decode(GitTree.self, from: data)
+        print("[GitService] Tree decoded: sha=\(tree.sha.prefix(8)), entries=\(tree.tree.count)")
         return tree.sha
     }
 
@@ -236,7 +239,7 @@ struct GitTree: Codable {
 struct GitTreeEntry: Codable {
     let path: String
     let mode: String
-    let type: String
+    let type: String?
     let sha: String
     let size: Int?
 }
