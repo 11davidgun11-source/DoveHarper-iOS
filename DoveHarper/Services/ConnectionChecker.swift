@@ -8,7 +8,6 @@ struct ServiceStatus {
 
 struct ConnectionReport {
     var github: ServiceStatus = .init(connected: false, detail: "Not checked", error: nil)
-    var shopify: ServiceStatus = .init(connected: false, detail: "Not checked", error: nil)
     var tryPost: ServiceStatus = .init(connected: false, detail: "Not checked", error: nil)
     var checkedAt: Date = Date()
 }
@@ -24,16 +23,13 @@ class ConnectionChecker {
     func checkAll(settings: AppSettings) async -> ConnectionReport {
         log("Checking GitHub...")
         async let gh = checkGitHub(settings: settings)
-        log("Checking Shopify...")
-        async let sh = checkShopify(settings: settings)
         log("Checking TryPost...")
         async let tp = checkTryPost(settings: settings)
-        let results = await (gh, sh, tp)
+        let results = await (gh, tp)
         log("System check complete.")
         return ConnectionReport(
             github: results.0,
-            shopify: results.1,
-            tryPost: results.2,
+            tryPost: results.1,
             checkedAt: Date()
         )
     }
@@ -90,56 +86,6 @@ class ConnectionChecker {
             return ServiceStatus(connected: false, detail: "Timeout", error: "GitHub API timed out after \(Int(timeout))s. Check your network connection.")
         } catch {
             log("GitHub: FAIL — \(error.localizedDescription)")
-            return ServiceStatus(connected: false, detail: "Network error", error: error.localizedDescription)
-        }
-    }
-
-    private func checkShopify(settings: AppSettings) async -> ServiceStatus {
-        guard !settings.shopifyAccessToken.isEmpty else {
-            log("Shopify: FAIL — no access token")
-            return ServiceStatus(connected: false, detail: "No access token", error: "Add your Shopify Store Access Token in Settings.")
-        }
-
-        log("Shopify: Token present (\(settings.shopifyAccessToken.prefix(8))...)")
-        log("Shopify: GET https://\(settings.shopifyShopURL)/admin/api/2026-07/shop.json")
-
-        let url = URL(string: "https://\(settings.shopifyShopURL)/admin/api/2026-07/shop.json")!
-        var request = URLRequest(url: url)
-        request.setValue(settings.shopifyAccessToken, forHTTPHeaderField: "X-Shopify-Access-Token")
-        request.timeoutInterval = timeout
-
-        do {
-            log("Shopify: Connecting to \(settings.shopifyShopURL)...")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                log("Shopify: FAIL — invalid response")
-                return ServiceStatus(connected: false, detail: "Invalid response", error: "Network error.")
-            }
-
-            log("Shopify: HTTP \(http.statusCode)")
-
-            if http.statusCode == 200 {
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let shop = json["shop"] as? [String: Any],
-                   let name = shop["name"] as? String {
-                    log("Shopify: OK — \(name)")
-                    return ServiceStatus(connected: true, detail: name, error: nil)
-                }
-                log("Shopify: OK — connected")
-                return ServiceStatus(connected: true, detail: "Connected", error: nil)
-            } else if http.statusCode == 401 || http.statusCode == 403 {
-                log("Shopify: FAIL — HTTP \(http.statusCode) (bad token)")
-                return ServiceStatus(connected: false, detail: "HTTP \(http.statusCode)", error: "Invalid Shopify access token. Go to Settings and update your token.")
-            } else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                log("Shopify: FAIL — HTTP \(http.statusCode): \(body.prefix(60))")
-                return ServiceStatus(connected: false, detail: "HTTP \(http.statusCode)", error: "Shopify API error \(http.statusCode): \(body.prefix(100))")
-            }
-        } catch let error as URLError where error.code == .timedOut {
-            log("Shopify: FAIL — request timed out (30s)")
-            return ServiceStatus(connected: false, detail: "Timeout", error: "Shopify API timed out after \(Int(timeout))s. Check your network connection.")
-        } catch {
-            log("Shopify: FAIL — \(error.localizedDescription)")
             return ServiceStatus(connected: false, detail: "Network error", error: error.localizedDescription)
         }
     }

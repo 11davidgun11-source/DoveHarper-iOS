@@ -36,8 +36,6 @@ jobs:
               static let githubPAT = "${{ secrets.GH_PAT }}"
               static let githubOwner = "doveharperauthor"
               static let githubRepo = "DoveHarper-site"
-              static let shopifyAccessToken = "${{ secrets.SHOPIFY_ACCESS_TOKEN }}"
-              static let shopifyShopURL = "doveharpershop.myshopify.com"
               static let tryPostAPIKey = "${{ secrets.TRYPOST_API_KEY }}"
           }
           SECRETS_EOF
