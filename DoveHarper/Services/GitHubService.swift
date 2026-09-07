@@ -61,37 +61,59 @@ class GitHubService {
                     errors.append("\(file.name): HTTP \(bookResp.statusCode)")
                     continue
                 }
-                let fileContent = try JSONDecoder().decode(GitHubContent.self, from: bookData)
-                if let encoded = fileContent.content,
-                   let decoded = Data(base64Encoded: encoded) {
-                    do {
-                        let book = try JSONDecoder().decode(BookJSON.self, from: decoded)
-                        books.append(book)
-                        print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
-                    } catch {
-                        let msg = "\(file.name): \(error.localizedDescription)"
-                        errors.append(msg)
-                        print("[GitHubService] DECODE FAILED: \(msg)")
-                    }
-                } else {
-                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(fileContent.sha)"
-                    let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
-                    if blobResp.statusCode == 200,
-                       let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData),
-                       let decoded = Data(base64Encoded: blob.content) {
-                        do {
-                            let book = try JSONDecoder().decode(BookJSON.self, from: decoded)
-                            books.append(book)
-                            print("[GitHubService] Loaded via blob: \(book.title) [\(book.status)]")
-                        } catch {
-                            errors.append("\(file.name) (blob): \(error.localizedDescription)")
+
+                var decoded: Data?
+
+                // Method 1: Try GitHub Contents API (base64 in content field)
+                if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData),
+                   let encoded = fileContent.content,
+                   !encoded.isEmpty {
+                    decoded = Data(base64Encoded: encoded)
+                }
+
+                // Method 2: Try raw download via download_url
+                if decoded == nil {
+                    if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData),
+                       let downloadURLString = fileContent.downloadURL,
+                       let downloadURL = URL(string: downloadURLString) {
+                        let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
+                        if dlResp.statusCode == 200 {
+                            decoded = dlData
                         }
-                    } else {
-                        errors.append("\(file.name): no content and blob fetch failed")
                     }
                 }
+
+                // Method 3: Try git blob API
+                if decoded == nil {
+                    if let sha = try? JSONDecoder().decode(GitHubContent.self, from: bookData)?.sha {
+                        let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
+                        let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
+                        if blobResp.statusCode == 200,
+                           let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData) {
+                            decoded = Data(base64Encoded: blob.content)
+                        }
+                    }
+                }
+
+                guard let jsonData = decoded else {
+                    // Dump raw response for debugging
+                    let raw = String(data: bookData, encoding: .utf8) ?? "non-utf8"
+                    let preview = raw.count > 150 ? String(raw.prefix(150)) + "..." : raw
+                    errors.append("\(file.name): all decode methods failed. Raw: \(preview)")
+                    continue
+                }
+
+                do {
+                    let book = try JSONDecoder().decode(BookJSON.self, from: jsonData)
+                    books.append(book)
+                    print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
+                } catch {
+                    let raw = String(data: jsonData, encoding: .utf8) ?? "non-utf8"
+                    let preview = raw.count > 150 ? String(raw.prefix(150)) + "..." : raw
+                    errors.append("\(file.name): BookJSON decode error: \(error.localizedDescription). Raw: \(preview)")
+                }
             } catch {
-                errors.append("\(file.name): \(error.localizedDescription)")
+                errors.append("\(file.name): fetch error: \(error.localizedDescription)")
             }
         }
 
