@@ -505,6 +505,7 @@ struct BookDetailView: View {
     }
 
     private func executeSave() async {
+        guard !isSaving else { return }
         guard let settings = allSettings.first, !settings.githubPAT.isEmpty else {
             saveError = "GitHub credentials not configured."
             showingError = true
@@ -550,14 +551,34 @@ struct BookDetailView: View {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(bookJSON)
 
-            try await github.pushFile(
-                owner: settings.githubOwner,
-                repo: settings.githubRepo,
-                path: "dove-harper-site/content/books/\(book.slug).json",
-                content: jsonData,
-                message: "Update \(book.title)",
-                pat: settings.githubPAT
-            )
+            // Validate JSON has source_markdown before pushing
+            if let jsonDict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                if jsonDict["source_markdown"] == nil {
+                    print("[BookDetailView] WARNING: source_markdown missing from JSON, adding manually")
+                    var mutableDict = jsonDict
+                    mutableDict["source_markdown"] = "manuscripts/\(book.slug).md"
+                    let correctedData = try JSONSerialization.data(withJSONObject: mutableDict, options: [.prettyPrinted, .sortedKeys])
+                    try await github.pushFile(
+                        owner: settings.githubOwner,
+                        repo: settings.githubRepo,
+                        path: "dove-harper-site/content/books/\(book.slug).json",
+                        content: correctedData,
+                        message: "Update \(book.title)",
+                        pat: settings.githubPAT
+                    )
+                } else {
+                    try await github.pushFile(
+                        owner: settings.githubOwner,
+                        repo: settings.githubRepo,
+                        path: "dove-harper-site/content/books/\(book.slug).json",
+                        content: jsonData,
+                        message: "Update \(book.title)",
+                        pat: settings.githubPAT
+                    )
+                }
+            } else {
+                throw GitHubError.encodingError
+            }
 
             // Save locally
             if manuscriptChanged, !editManuscriptText.isEmpty {
@@ -592,10 +613,6 @@ struct BookDetailView: View {
             }
 
             // Success
-            await MainActor.run {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-            }
             withAnimation { saved = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation { saved = false }
