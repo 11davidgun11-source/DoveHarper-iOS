@@ -143,6 +143,45 @@ class GitHubService {
         return try JSONDecoder().decode(BookJSON.self, from: bookData)
     }
 
+    func getFileContent(
+        owner: String,
+        repo: String,
+        path: String,
+        pat: String
+    ) async throws -> Data {
+        let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
+        let (data, response) = try await makeRequest(path: urlPath, pat: pat)
+        guard response.statusCode == 200 else {
+            throw GitHubError.apiError("File not found: \(path) (\(response.statusCode))")
+        }
+        let fileContent = try JSONDecoder().decode(GitHubContent.self, from: data)
+        if let encoded = fileContent.content, !encoded.isEmpty,
+           let decoded = Data(base64Encoded: encoded) {
+            return decoded
+        }
+        if let downloadURLString = fileContent.downloadURL,
+           let downloadURL = URL(string: downloadURLString) {
+            let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
+            if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
+                return dlData
+            }
+        }
+        throw GitHubError.apiError("Could not fetch file content: \(path)")
+    }
+
+    func getFileAsString(
+        owner: String,
+        repo: String,
+        path: String,
+        pat: String
+    ) async throws -> String {
+        let data = try await getFileContent(owner: owner, repo: repo, path: path, pat: pat)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw GitHubError.encodingError
+        }
+        return text
+    }
+
     func getBookSHA(owner: String, repo: String, path: String, pat: String) async throws -> String? {
         let urlPath = "/repos/\(owner)/\(repo)/contents/\(path)"
         let (data, response) = try await makeRequest(path: urlPath, pat: pat)
