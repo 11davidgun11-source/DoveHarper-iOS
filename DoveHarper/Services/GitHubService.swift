@@ -73,8 +73,8 @@ class GitHubService {
                         errors.append(msg)
                         print("[GitHubService] DECODE FAILED: \(msg)")
                     }
-                } else if let sha = fileContent.sha {
-                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
+                } else {
+                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(fileContent.sha)"
                     let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
                     if blobResp.statusCode == 200,
                        let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData),
@@ -89,8 +89,6 @@ class GitHubService {
                     } else {
                         errors.append("\(file.name): no content and blob fetch failed")
                     }
-                } else {
-                    errors.append("\(file.name): no base64 content, no sha")
                 }
             } catch {
                 errors.append("\(file.name): \(error.localizedDescription)")
