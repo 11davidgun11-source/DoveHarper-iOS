@@ -518,8 +518,9 @@ struct BookDetailView: View {
         let github = GitHubService()
 
         do {
-            // Push manuscript if changed
+            // Step 1: Push manuscript if changed
             if manuscriptChanged, !editManuscriptText.isEmpty {
+                print("[Save] Step 1: Pushing manuscript...")
                 let manuscriptData = editManuscriptText.data(using: .utf8)!
                 try await github.pushFile(
                     owner: settings.githubOwner,
@@ -529,11 +530,13 @@ struct BookDetailView: View {
                     message: "Update manuscript for \(book.title)",
                     pat: settings.githubPAT
                 )
+                print("[Save] Step 1: Manuscript pushed OK")
             }
 
-            // Push cover if changed
+            // Step 2: Push cover if changed
             if coverChanged, let cover = editCoverImage,
                let jpegData = cover.jpegData(compressionQuality: 0.9) {
+                print("[Save] Step 2: Pushing cover...")
                 try await github.pushFile(
                     owner: settings.githubOwner,
                     repo: settings.githubRepo,
@@ -542,45 +545,36 @@ struct BookDetailView: View {
                     message: "Update cover for \(book.title)",
                     pat: settings.githubPAT
                 )
+                print("[Save] Step 2: Cover pushed OK")
             }
 
-            // Always push book JSON
+            // Step 3: Build and validate book JSON
+            print("[Save] Step 3: Building book JSON...")
             applyEditsToBook()
             let bookJSON = book.toBookJSON()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(bookJSON)
 
-            // Validate JSON has source_markdown before pushing
-            if let jsonDict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                if jsonDict["source_markdown"] == nil {
-                    print("[BookDetailView] WARNING: source_markdown missing from JSON, adding manually")
-                    var mutableDict = jsonDict
-                    mutableDict["source_markdown"] = "manuscripts/\(book.slug).md"
-                    let correctedData = try JSONSerialization.data(withJSONObject: mutableDict, options: [.prettyPrinted, .sortedKeys])
-                    try await github.pushFile(
-                        owner: settings.githubOwner,
-                        repo: settings.githubRepo,
-                        path: "dove-harper-site/content/books/\(book.slug).json",
-                        content: correctedData,
-                        message: "Update \(book.title)",
-                        pat: settings.githubPAT
-                    )
-                } else {
-                    try await github.pushFile(
-                        owner: settings.githubOwner,
-                        repo: settings.githubRepo,
-                        path: "dove-harper-site/content/books/\(book.slug).json",
-                        content: jsonData,
-                        message: "Update \(book.title)",
-                        pat: settings.githubPAT
-                    )
-                }
-            } else {
-                throw GitHubError.encodingError
-            }
+            // Decode it back to verify it's valid
+            let verifyDecoder = JSONDecoder()
+            let _ = try verifyDecoder.decode(BookJSON.self, from: jsonData)
+            print("[Save] Step 3: JSON validated OK (\(jsonData.count) bytes)")
 
-            // Save locally
+            // Step 4: Push book JSON
+            print("[Save] Step 4: Pushing book JSON...")
+            try await github.pushFile(
+                owner: settings.githubOwner,
+                repo: settings.githubRepo,
+                path: "dove-harper-site/content/books/\(book.slug).json",
+                content: jsonData,
+                message: "Update \(book.title)",
+                pat: settings.githubPAT
+            )
+            print("[Save] Step 4: Book JSON pushed OK")
+
+            // Step 5: Save locally
+            print("[Save] Step 5: Saving locally...")
             if manuscriptChanged, !editManuscriptText.isEmpty {
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let manuscriptURL = docs.appendingPathComponent("\(book.slug).md")
@@ -599,9 +593,11 @@ struct BookDetailView: View {
             }
 
             try modelContext.save()
+            print("[Save] Step 5: Local save OK")
 
-            // Monitor workflow if content changed
+            // Step 6: Monitor workflow if content changed
             if needsWorkflow {
+                print("[Save] Step 6: Monitoring workflow...")
                 let conversion = ConversionService()
                 _ = try await conversion.triggerAndMonitorConversion(
                     owner: settings.githubOwner,
@@ -610,9 +606,11 @@ struct BookDetailView: View {
                     pat: settings.githubPAT,
                     onStatus: { _ in }
                 )
+                print("[Save] Step 6: Workflow complete")
             }
 
             // Success
+            print("[Save] DONE - all steps OK")
             withAnimation { saved = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation { saved = false }
@@ -620,7 +618,8 @@ struct BookDetailView: View {
             isEditing = false
 
         } catch {
-            saveError = error.localizedDescription
+            print("[Save] FAILED at: \(error)")
+            saveError = "\(error)"
             showingError = true
         }
     }
