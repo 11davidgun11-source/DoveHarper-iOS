@@ -74,10 +74,10 @@ struct BookEditorView: View {
             Section("Pricing") {
                 Toggle("Free Book", isOn: $book.isFree)
                 PriceInputView(priceLabel: $book.priceLabel, isFree: $book.isFree)
-                if !book.isFree && book.primaryCheckoutURL.isEmpty {
-                    Text("After publishing, add the Shopify product URL in Book Details.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if !book.isFree {
+                    TextField("Shopify Checkout URL (optional — add later in Book Details)", text: $book.primaryCheckoutURL)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
                 }
             }
 
