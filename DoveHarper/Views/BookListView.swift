@@ -132,7 +132,17 @@ struct BookListView: View {
 
     private func refreshBooks() async {
         let descriptor = FetchDescriptor<AppSettings>()
-        guard let settings = try? modelContext.fetch(descriptor).first else { return }
+        let settings: AppSettings
+        do {
+            guard let fetched = try modelContext.fetch(descriptor).first else {
+                errorMessage = "No settings found. Go to Settings tab."
+                return
+            }
+            settings = fetched
+        } catch {
+            errorMessage = "Failed to load settings: \(error.localizedDescription)"
+            return
+        }
 
         if settings.githubPAT.isEmpty {
             patMissing = true
@@ -152,6 +162,8 @@ struct BookListView: View {
                 pat: settings.githubPAT
             )
 
+            print("[BookListView] Fetched \(books.count) books from GitHub")
+
             for bookJSON in books {
                 let existing = publishedBooks.first { $0.slug == bookJSON.slug }
                 if let existing = existing {
@@ -159,12 +171,15 @@ struct BookListView: View {
                 } else {
                     let entity = createEntity(from: bookJSON)
                     modelContext.insert(entity)
+                    print("[BookListView] Inserted book: \(bookJSON.title)")
                 }
             }
 
             try modelContext.save()
             lastSynced = Date()
+            print("[BookListView] Save successful, lastSynced set")
         } catch {
+            print("[BookListView] Error: \(error.localizedDescription)")
             errorMessage = "Failed to load books: \(error.localizedDescription)"
         }
     }

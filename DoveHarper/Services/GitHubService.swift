@@ -38,22 +38,31 @@ class GitHubService {
         let (data, response) = try await makeRequest(path: path, pat: pat)
 
         guard response.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? "Unknown"
+            print("[GitHubService] listBooks failed: \(response.statusCode) - \(body.prefix(200))")
             throw GitHubError.apiError("Failed to list books: \(response.statusCode)")
         }
 
         let contents = try JSONDecoder().decode([GitHubContent].self, from: data)
         var books: [BookJSON] = []
 
+        print("[GitHubService] Found \(contents.count) files in books directory")
+
         for content in contents where content.name.hasSuffix(".json") && !content.name.hasPrefix("_") {
+            print("[GitHubService] Processing: \(content.name) (size: \(content.size))")
             if let encodedContent = content.content,
                let decodedData = Data(base64Encoded: encodedContent),
                let book = try? JSONDecoder().decode(BookJSON.self, from: decodedData) {
                 books.append(book)
+                print("[GitHubService] Decoded from base64: \(book.title)")
             } else if let downloadURL = content.downloadURL,
                       let url = URL(string: downloadURL),
                       let (bookData, _) = try? await URLSession.shared.data(from: url),
                       let book = try? JSONDecoder().decode(BookJSON.self, from: bookData) {
                 books.append(book)
+                print("[GitHubService] Downloaded and decoded: \(book.title)")
+            } else {
+                print("[GitHubService] Failed to decode: \(content.name)")
             }
         }
 
