@@ -64,42 +64,42 @@ class GitHubService {
 
                 var decoded: Data?
 
-                // Method 1: Try GitHub Contents API (base64 in content field)
-                if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData),
-                   let encoded = fileContent.content,
-                   !encoded.isEmpty {
+                guard let json = try? JSONSerialization.jsonObject(with: bookData) as? [String: Any] else {
+                    errors.append("\(file.name): invalid JSON response")
+                    continue
+                }
+
+                let sha = json["sha"] as? String
+
+                // Method 1: base64 content field
+                if let encoded = json["content"] as? String, !encoded.isEmpty {
                     decoded = Data(base64Encoded: encoded)
                 }
 
-                // Method 2: Try raw download via download_url
-                if decoded == nil {
-                    if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData),
-                       let downloadURLString = fileContent.downloadURL,
-                       let downloadURL = URL(string: downloadURLString) {
-                        let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
-                        if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
-                            decoded = dlData
-                        }
+                // Method 2: download_url
+                if decoded == nil, let downloadURLString = json["download_url"] as? String,
+                   let downloadURL = URL(string: downloadURLString) {
+                    let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
+                    if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
+                        decoded = dlData
                     }
                 }
 
-                // Method 3: Try git blob API
-                if decoded == nil {
-                    if let fileContent = try? JSONDecoder().decode(GitHubContent.self, from: bookData) {
-                        let sha = fileContent.sha
-                        let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
-                        let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
-                        if blobResp.statusCode == 200,
-                           let blob = try? JSONDecoder().decode(GitHubBlob.self, from: blobData) {
-                            decoded = Data(base64Encoded: blob.content)
-                        }
+                // Method 3: git blob API
+                if decoded == nil, let sha = sha {
+                    let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
+                    let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
+                    if blobResp.statusCode == 200,
+                       let blobJson = try? JSONSerialization.jsonObject(with: blobData) as? [String: Any],
+                       let blobContent = blobJson["content"] as? String {
+                        decoded = Data(base64Encoded: blobContent)
                     }
                 }
 
                 guard let jsonData = decoded else {
                     // Dump raw response for debugging
                     let raw = String(data: bookData, encoding: .utf8) ?? "non-utf8"
-                    let preview = raw.count > 150 ? String(raw.prefix(150)) + "..." : raw
+                    let preview = raw.count > 400 ? String(raw.prefix(400)) + "..." : raw
                     errors.append("\(file.name): all decode methods failed. Raw: \(preview)")
                     continue
                 }
@@ -110,7 +110,7 @@ class GitHubService {
                     print("[GitHubService] Loaded: \(book.title) [\(book.status)]")
                 } catch {
                     let raw = String(data: jsonData, encoding: .utf8) ?? "non-utf8"
-                    let preview = raw.count > 150 ? String(raw.prefix(150)) + "..." : raw
+                    let preview = raw.count > 400 ? String(raw.prefix(400)) + "..." : raw
                     errors.append("\(file.name): BookJSON decode error: \(error.localizedDescription). Raw: \(preview)")
                 }
             } catch {
@@ -154,18 +154,40 @@ class GitHubService {
         guard response.statusCode == 200 else {
             throw GitHubError.apiError("File not found: \(path) (\(response.statusCode))")
         }
-        let fileContent = try JSONDecoder().decode(GitHubContent.self, from: data)
-        if let encoded = fileContent.content, !encoded.isEmpty,
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GitHubError.apiError("Invalid JSON response for \(path)")
+        }
+
+        let sha = json["sha"] as? String
+
+        // Method 1: base64 content field
+        if let encoded = json["content"] as? String, !encoded.isEmpty,
            let decoded = Data(base64Encoded: encoded) {
             return decoded
         }
-        if let downloadURLString = fileContent.downloadURL,
+
+        // Method 2: download_url
+        if let downloadURLString = json["download_url"] as? String,
            let downloadURL = URL(string: downloadURLString) {
             let (dlData, dlResp) = try await URLSession.shared.data(from: downloadURL)
             if let httpResp = dlResp as? HTTPURLResponse, httpResp.statusCode == 200 {
                 return dlData
             }
         }
+
+        // Method 3: git blob API
+        if let sha = sha {
+            let blobPath = "/repos/\(owner)/\(repo)/git/blobs/\(sha)"
+            let (blobData, blobResp) = try await makeRequest(path: blobPath, pat: pat)
+            if blobResp.statusCode == 200,
+               let blobJson = try? JSONSerialization.jsonObject(with: blobData) as? [String: Any],
+               let blobContent = blobJson["content"] as? String,
+               let decoded = Data(base64Encoded: blobContent) {
+                return decoded
+            }
+        }
+
         throw GitHubError.apiError("Could not fetch file content: \(path)")
     }
 
