@@ -16,6 +16,8 @@ class GitService {
             throw GitError.apiError("Failed to get ref: \(response.statusCode)")
         }
 
+        let refRaw = String(data: data, encoding: .utf8) ?? "nil"
+        print("[GitService] Ref response: \(refRaw.prefix(300))")
         let ref = try JSONDecoder().decode(GitRef.self, from: data)
         let commitSHA = ref.object.sha
 
@@ -26,6 +28,8 @@ class GitService {
             throw GitError.apiError("Failed to get commit: \(commitResp.statusCode)")
         }
 
+        let commitRaw = String(data: commitData, encoding: .utf8) ?? "nil"
+        print("[GitService] Commit response: \(commitRaw.prefix(500))")
         let commit = try JSONDecoder().decode(GitCommit.self, from: commitData)
         return (commitSHA, commit.tree.sha)
     }
@@ -51,6 +55,8 @@ class GitService {
             throw GitError.apiError("Failed to create blob: \(response.statusCode) - \(errorBody)")
         }
 
+        let blobRaw = String(data: data, encoding: .utf8) ?? "nil"
+        print("[GitService] Blob response: \(blobRaw.prefix(300))")
         let blob = try JSONDecoder().decode(GitBlob.self, from: data)
         return blob.sha
     }
@@ -211,12 +217,31 @@ class GitService {
 struct GitRef: Codable {
     let ref: String
     let object: GitObject
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ref = (try? c.decode(String.self, forKey: .ref)) ?? ""
+        object = (try? c.decode(GitObject.self, forKey: .object)) ?? GitObject(sha: "", type: "", url: "")
+    }
 }
 
 struct GitObject: Codable {
     let sha: String
     let type: String
     let url: String
+
+    init(sha: String, type: String, url: String) {
+        self.sha = sha
+        self.type = type
+        self.url = url
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sha = (try? c.decode(String.self, forKey: .sha)) ?? ""
+        type = (try? c.decode(String.self, forKey: .type)) ?? ""
+        url = (try? c.decode(String.self, forKey: .url)) ?? ""
+    }
 }
 
 struct GitCommit: Codable {
@@ -224,16 +249,36 @@ struct GitCommit: Codable {
     let message: String
     let tree: GitObject
     let parents: [GitObject]?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sha = (try? c.decode(String.self, forKey: .sha)) ?? ""
+        message = (try? c.decode(String.self, forKey: .message)) ?? ""
+        tree = (try? c.decode(GitObject.self, forKey: .tree)) ?? GitObject(sha: "", type: "", url: "")
+        parents = try? c.decode([GitObject].self, forKey: .parents)
+    }
 }
 
 struct GitBlob: Codable {
     let sha: String
     let size: Int
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sha = (try? c.decode(String.self, forKey: .sha)) ?? ""
+        size = (try? c.decode(Int.self, forKey: .size)) ?? 0
+    }
 }
 
 struct GitTree: Codable {
     let sha: String
     let tree: [GitTreeEntry]
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sha = (try? c.decode(String.self, forKey: .sha)) ?? ""
+        tree = (try? c.decode([GitTreeEntry].self, forKey: .tree)) ?? []
+    }
 }
 
 struct GitTreeEntry: Codable {
@@ -242,6 +287,15 @@ struct GitTreeEntry: Codable {
     let type: String?
     let sha: String
     let size: Int?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? c.decode(String.self, forKey: .path)) ?? ""
+        mode = (try? c.decode(String.self, forKey: .mode)) ?? "100644"
+        type = try? c.decode(String.self, forKey: .type)
+        sha = (try? c.decode(String.self, forKey: .sha)) ?? ""
+        size = try? c.decode(Int.self, forKey: .size)
+    }
 }
 
 // MARK: - Errors

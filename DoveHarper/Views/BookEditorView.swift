@@ -111,8 +111,9 @@ struct BookEditorView: View {
                         if let data = try? await newValue?.loadTransferable(type: Data.self),
                            let uiImage = UIImage(data: data) {
                             coverImage = uiImage
-                            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                            let coverURL = docs.appendingPathComponent("\(book.slug)-cover.jpg")
+                            let fm = BookFileManager()
+                            let coverURL = fm.draftCoverPath(for: book.slug)
+                            try? FileManager.default.createDirectory(at: fm.draftDir(for: book.slug), withIntermediateDirectories: true)
                             if let jpegData = uiImage.jpegData(compressionQuality: 0.9) {
                                 try? jpegData.write(to: coverURL)
                                 book.coverImagePath = coverURL.path
@@ -270,8 +271,9 @@ struct BookEditorView: View {
         if let data = FileManager.default.contents(atPath: url.path),
            let text = String(data: data, encoding: .utf8) {
             manuscriptText = text
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let manuscriptURL = docs.appendingPathComponent("\(book.slug).md")
+            let fm = BookFileManager()
+            let manuscriptURL = fm.draftManuscriptPath(for: book.slug)
+            try? FileManager.default.createDirectory(at: fm.draftDir(for: book.slug), withIntermediateDirectories: true)
             try? data.write(to: manuscriptURL)
             book.manuscriptPath = manuscriptURL.path
             book.wordCount = text.split(separator: " ").count
